@@ -12,7 +12,7 @@ const ms = (x: number) => `${x.toFixed(1)} ms`;
 
 const STORE_KEY = "freeform-typing.history.v1";
 const RULE_KEY = "freeform-typing.rule.v1";
-const CFG_KEY = "freeform-typing.config.v1";
+const CFG_KEY = "freeform-typing.config.v2"; // v2: 既定モデルを ruri-v3-30m に替えたので、前に保存した e5 の設定を引き継がない
 
 let tokenizer: Tokenizer<IpadicFeatures> | null = null;
 let morphInfo: MorphLoadInfo | null = null;

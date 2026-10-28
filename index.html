@@ -29,11 +29,11 @@
         <button id="btn-load">モデルを読み込む</button>
       </div>
       <p class="note">
-        既定は Xenova/multilingual-e5-small、文も単語も <code>"query: "</code> を前に付ける。
-        e5 は検索の質問側に "query: "、文書側に "passage: " を付けて学習されていて、
-        文どうしの類似度のような対称な比べ方では両側とも "query: " を使うようモデルの説明にある。
-        ここでは比べる両側が同じ種類（打った文どうし・名詞どうし）なので "query: " に揃えた。
-        前置きの要らないモデルに替えるときは空にする。
+        既定は日本語専用の sirasagi62/ruri-v3-30m-ONNX（cl-nagoya/ruri-v3-30m の ONNX 版）で、前置きは空。
+        ruri-v3 は前置きで用途を分けていて、意味の近さを測るときは空文字列を使うとモデルの説明にある
+        （ほかに "トピック: "・"検索クエリ: "・"検索文書: "）。
+        Xenova/multilingual-e5-small に替えるときは、文も単語も <code>"query: "</code> を前に付ける
+        （対称な比べ方では両側とも "query: " を使うとモデルの説明にある）。
       </p>
       <div id="status" class="status"></div>
     </section>

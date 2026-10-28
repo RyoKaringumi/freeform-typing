@@ -9,15 +9,16 @@ export type EmbedConfig = {
   dtype: "fp32" | "fp16" | "q8" | "q4";
   device: "wasm" | "webgpu";
   pooling: "mean" | "cls";
-  prefix: string; // 文・単語の前に付ける文字列。e5 は "query: "
+  prefix: string; // 文・単語の前に付ける文字列。ruri-v3 は意味の比較なら ""、e5 は "query: "
 };
 
+// 既定は日本語専用の ruri-v3-30m（取得 約 44 MB）。e5-small との比較で文の順番が妥当、単語もましだった
 export const DEFAULT_CONFIG: EmbedConfig = {
-  model: "Xenova/multilingual-e5-small",
+  model: "sirasagi62/ruri-v3-30m-ONNX",
   dtype: "q8",
   device: "wasm",
   pooling: "mean",
-  prefix: "query: ",
+  prefix: "",
 };
 
 export function configKey(c: EmbedConfig): string {
