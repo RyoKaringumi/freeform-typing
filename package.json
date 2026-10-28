@@ -1,0 +1,22 @@
+{
+  "name": "freeform-typing",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "copy-dict": "node scripts/copy-dict.mjs",
+    "dev": "npm run copy-dict && vite",
+    "build": "npm run copy-dict && tsc --noEmit && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^4.3.2",
+    "kuromoji": "^0.1.2"
+  },
+  "devDependencies": {
+    "@types/kuromoji": "^0.1.3",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5"
+  }
+}
