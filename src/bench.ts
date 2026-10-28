@@ -1,4 +1,4 @@
-import "./style.css";
+import "./bench.css";
 import type { IpadicFeatures, Tokenizer } from "kuromoji";
 import { loadTokenizer, NOUN_RULE, type MorphLoadInfo, type TokenRow } from "./morph";
 import { configKey, DEFAULT_CONFIG, loadModel, type EmbedConfig, type ModelLoadInfo } from "./embed";
