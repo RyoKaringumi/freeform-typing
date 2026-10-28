@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="data:," />
+    <title>freeform-typing 評価テストベンチ</title>
+  </head>
+  <body>
+    <header>
+      <h1>freeform-typing 評価テストベンチ</h1>
+      <p class="sub">お題の無いタイピングゲームのための、形態素解析と埋め込みの挙動を確かめる台。打鍵の判定はまだ無い。</p>
+    </header>
+
+    <section id="settings" class="panel">
+      <h2>設定</h2>
+      <div class="grid">
+        <label>埋め込みモデル <input id="cfg-model" size="40" /></label>
+        <label>dtype
+          <select id="cfg-dtype"><option>q8</option><option>fp32</option><option>fp16</option><option>q4</option></select>
+        </label>
+        <label>device
+          <select id="cfg-device"><option>wasm</option><option>webgpu</option></select>
+        </label>
+        <label>pooling
+          <select id="cfg-pooling"><option>mean</option><option>cls</option></select>
+        </label>
+        <label>前置き（prefix） <input id="cfg-prefix" size="12" /></label>
+        <button id="btn-load">モデルを読み込む</button>
+      </div>
+      <p class="note">
+        既定は Xenova/multilingual-e5-small、文も単語も <code>"query: "</code> を前に付ける。
+        e5 は検索の質問側に "query: "、文書側に "passage: " を付けて学習されていて、
+        文どうしの類似度のような対称な比べ方では両側とも "query: " を使うようモデルの説明にある。
+        ここでは比べる両側が同じ種類（打った文どうし・名詞どうし）なので "query: " に揃えた。
+        前置きの要らないモデルに替えるときは空にする。
+      </p>
+      <div id="status" class="status"></div>
+    </section>
+
+    <section id="input" class="panel">
+      <div class="row">
+        <input id="text" placeholder="日本語の文を自由に打つ（Enter で送信）" autocomplete="off" />
+        <button id="btn-send">送信</button>
+      </div>
+      <div class="row small">
+        <label><input type="checkbox" id="opt-hira" /> ひらがな化して再解析（並べて表示）</label>
+        <button id="btn-export">履歴を JSON で書き出す</button>
+        <label class="file">JSON を読み込む <input type="file" id="file-import" accept="application/json,.json" /></label>
+        <button id="btn-recompute">全件を今の設定で再計算（決定性の確認）</button>
+        <button id="btn-clear">履歴を消す</button>
+      </div>
+    </section>
+
+    <section id="rule" class="panel">
+      <details>
+        <summary>得点ルールの試作（JS の関数を書いて、履歴の全件で評価する）</summary>
+        <p class="note">
+          <code>(f, prev, all) =&gt; 数値</code> の形で書く。<code>f</code> はその文の特徴量、<code>prev</code> は一つ前の文の特徴量（無ければ null）、
+          <code>all</code> は履歴全体。使える項目は各エントリの「ルール用の特徴量」を開くと見える。ブラウザの中だけで動く。
+        </p>
+        <textarea id="rule-code" rows="10" spellcheck="false"></textarea>
+        <div class="row small"><button id="btn-rule">評価する</button></div>
+        <div id="rule-out"></div>
+      </details>
+    </section>
+
+    <main id="history"></main>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
