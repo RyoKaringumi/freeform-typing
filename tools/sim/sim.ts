@@ -87,6 +87,17 @@ const items: Item[] = CORPUS.map((s, id) => {
   emb.refWord = REF_WORDS.map((s) => vecCache[s]);
 }
 const casualItems = items.filter((i) => CASUAL_CATS.includes(i.cat));
+/** 1 ラウンドの拍の予算（無ければ Infinity）と、1 文が使う拍 */
+const BUDGET = Infinity;
+const cost = (it: Item) => it.mora;
+/** 打ち方ごとの「思いつく文」の範囲 */
+const LONG_MIN = 35, SHORT_MAX = 15;
+const POOLS: Record<string, (i: Item) => boolean> = {
+  casual: (i) => CASUAL_CATS.includes(i.cat),
+  long: (i) => i.mora >= LONG_MIN,
+  short: (i) => i.mora <= SHORT_MAX,
+  all: () => true,
+};
 
 // ---- 1 文の点 ----
 type Hist = { item: Item; total: number; round: number }[];
@@ -100,7 +111,9 @@ async function score(it: Item, hist: Hist, round: number, owned: string[]) {
 }
 
 // ---- 方針 ----
-type Typist = { name: string; choose: (avail: Item[], hist: Hist, round: number, owned: string[], rnd: () => number) => Promise<Item> };
+/** このラウンドの残り（文の数と拍） */
+type Left = { hands: number; budget: number };
+type Typist = { name: string; pool: string; choose: (avail: Item[], hist: Hist, round: number, owned: string[], rnd: () => number, left: Left) => Promise<Item> };
 const pickRandom = <T,>(xs: T[], rnd: () => number) => xs[Math.floor(rnd() * xs.length)];
 function sample<T>(xs: T[], k: number, rnd: () => number): T[] {
   if (k >= xs.length) return xs.slice();
@@ -108,33 +121,51 @@ function sample<T>(xs: T[], k: number, rnd: () => number): T[] {
   while (out.length < k) out.push(p.splice(Math.floor(rnd() * p.length), 1)[0]);
   return out;
 }
-async function bestOf(cands: Item[], hist: Hist, round: number, owned: string[]) {
+/** 残りの文の数と拍のうち、この文が使う割合の大きい方あたりの点で比べる（予算が無ければ点そのものの順） */
+const value = (total: number, it: Item, left: Left) => total / Math.max(cost(it) / left.budget, 1 / left.hands);
+async function bestOf(cands: Item[], hist: Hist, round: number, owned: string[], left: Left) {
   let best = cands[0], bs = -1;
   for (const c of cands) {
-    const s = (await score(c, hist, round, owned)).total;
+    const s = value((await score(c, hist, round, owned)).total, c, left);
     if (s > bs) { bs = s; best = c; }
   }
   return best;
 }
+/** 打ち方の範囲から（無ければ全部から） */
+const inPool = (avail: Item[], pool: string) => {
+  const xs = avail.filter(POOLS[pool]);
+  return xs.length ? xs : avail;
+};
 const TYPISTS: Record<string, Typist> = {
   // カードを気にせず、ふつうの文を打つ
-  casual: { name: "ふつうに打つ", choose: async (avail, _h, _r, _o, rnd) => pickRandom(avail.filter((i) => CASUAL_CATS.includes(i.cat)), rnd) },
-  // 思いついた 8 文のうち、いまのカードで一番点の高いものを打つ（少し考える）
-  think8: { name: "少し考える（8 文から）", choose: async (avail, h, r, o, rnd) => bestOf(sample(avail, 8, rnd), h, r, o) },
-  // 文例の全部から一番点の高いものを打つ（よく考える。上限の目安）
-  thinkAll: { name: "よく考える（全文例から）", choose: async (avail, h, r, o) => bestOf(avail, h, r, o) },
+  casual: { name: "ふつうに打つ", pool: "casual", choose: async (avail, _h, _r, _o, rnd) => pickRandom(inPool(avail, "casual"), rnd) },
+  // カードを見ずに、思いついた 8 文（35 拍以上）のうち一番長い文を打つ
+  long: {
+    name: "長い文ばかり打つ（8 文から一番長い文）",
+    pool: "long",
+    choose: async (avail, _h, _r, _o, rnd) => sample(inPool(avail, "long"), 8, rnd).reduce((a, b) => (b.mora > a.mora ? b : a)),
+  },
+  // 長い文（35 拍以上）を 8 つ思いつき、いまのカードで一番得なものを打つ
+  longThink: { name: "長い文で狙う（35 拍以上の 8 文から）", pool: "long", choose: async (avail, h, r, o, rnd, left) => bestOf(sample(inPool(avail, "long"), 8, rnd), h, r, o, left) },
+  // 短い文（15 拍以下）を 8 つ思いつき、いまのカードで一番得なものを打つ
+  shortThink: { name: "短い文で狙う（15 拍以下の 8 文から）", pool: "short", choose: async (avail, h, r, o, rnd, left) => bestOf(sample(inPool(avail, "short"), 8, rnd), h, r, o, left) },
+  // 思いついた 8 文のうち、いまのカードで一番得なものを打つ（少し考える）
+  think8: { name: "少し考える（8 文から）", pool: "all", choose: async (avail, h, r, o, rnd, left) => bestOf(sample(avail, 8, rnd), h, r, o, left) },
+  // 文例の全部から一番得なものを打つ（よく考える。上限の目安）
+  thinkAll: { name: "よく考える（全文例から）", pool: "all", choose: async (avail, h, r, o, _rnd, left) => bestOf(avail, h, r, o, left) },
 };
 
 type Picker = { name: string; pick: (offers: string[], owned: string[], hist: Hist, avail: Item[], typist: string, rnd: () => number) => Promise<string | null> };
 async function greedyPick(offers: string[], owned: string[], hist: Hist, avail: Item[], typist: string, rnd: () => number) {
-  // 取ったあとの 1 文の点の見込み: 方針が casual なら無作為 30 文の平均、考える方針なら 40 文の上位 5 文の平均
-  const cands = sample(typist === "casual" ? avail.filter((i) => CASUAL_CATS.includes(i.cat)) : avail, typist === "casual" ? 30 : 40, rnd);
+  // 取ったあとの 1 文の点の見込み: 考えない打ち方なら、その打ち方の範囲の無作為 30 文の平均、考える打ち方なら範囲の 40 文の上位 5 文の平均
+  const casual = typist === "casual" || typist === "long";
+  const cands = sample(inPool(avail, TYPISTS[typist].pool), casual ? 30 : 40, rnd);
   let best: string | null = null, bv = -1;
   for (const id of offers) {
     const sc: number[] = [];
     for (const c of cands) sc.push((await score(c, hist, 99, [...owned, id])).total);
     sc.sort((a, b) => b - a);
-    const v = typist === "casual" ? sc.reduce((a, b) => a + b, 0) / sc.length : sc.slice(0, 5).reduce((a, b) => a + b, 0) / 5;
+    const v = casual ? sc.reduce((a, b) => a + b, 0) / sc.length : sc.slice(0, 5).reduce((a, b) => a + b, 0) / 5;
     if (v > bv) { bv = v; best = id; }
   }
   return best;
@@ -153,7 +184,7 @@ const PICKERS: Record<string, Picker> = {
 };
 
 // ---- 1 ラン ----
-type SentRec = { round: number; total: number; owned: string[]; marg: Record<string, number>; hits: Record<string, number>; amt: Record<string, number>; t: Record<string, number> };
+type SentRec = { round: number; total: number; mora: number; owned: string[]; marg: Record<string, number>; hits: Record<string, number>; amt: Record<string, number>; t: Record<string, number> };
 type RunRec = { cleared: number; owned: string[]; sents: SentRec[]; roundScores: number[] };
 const EMB_IDS = CARDS.filter((c) => c.source === "埋め込み").map((c) => c.id);
 
@@ -165,12 +196,14 @@ async function runOnce(typist: string, picker: string, rnd: () => number, detail
   const roundScores: number[] = [];
   let round = 1;
   for (; round <= MAX_ROUND; round++) {
-    let sum = 0;
+    let sum = 0, spent = 0;
     for (let h = 0; h < HANDS && sum < gateFor(round); h++) {
-      const avail = items.filter((i) => !used.has(i.id));
-      const it = await TYPISTS[typist].choose(avail, hist, round, owned, rnd);
+      const left: Left = { hands: HANDS - h, budget: BUDGET - spent };
+      const avail = items.filter((i) => !used.has(i.id) && cost(i) <= left.budget);
+      if (!avail.length) break;
+      const it = await TYPISTS[typist].choose(avail, hist, round, owned, rnd, left);
       const bd = await score(it, hist, round, owned);
-      const rec: SentRec = { round, total: bd.total, owned: owned.slice(), marg: {}, hits: {}, amt: {}, t: {} };
+      const rec: SentRec = { round, total: bd.total, mora: it.mora, owned: owned.slice(), marg: {}, hits: {}, amt: {}, t: {} };
       if (detail) {
         for (const l of [...bd.chipLines, ...bd.multLines, ...bd.xLines]) {
           rec.hits[l.card.id] = l.result.hit ? 1 : 0;
@@ -191,6 +224,7 @@ async function runOnce(typist: string, picker: string, rnd: () => number, detail
       hist.push({ item: it, total: bd.total, round });
       used.add(it.id);
       sum += bd.total;
+      spent += cost(it);
     }
     roundScores.push(sum);
     if (sum < gateFor(round)) break;
@@ -242,14 +276,15 @@ md.push(`# 集計 ${LABEL}（各 ${RUNS} ラン、種 ${SEED}）`, "", "ゲー�
 // 2) ラン
 const CONFIGS: [string, string][] = [
   ["casual", "none"], ["casual", "random"], ["casual", "greedy"],
+  ["long", "none"], ["long", "greedy"], ["longThink", "greedy"], ["shortThink", "greedy"],
   ["think8", "none"], ["think8", "random"], ["think8", "greedy"],
   ["thinkAll", "random"], ["thinkAll", "greedy"], ["thinkAll", "focusX"], ["thinkAll", "focusEmb"], ["thinkAll", "focusChips"],
   ["think8", "focusEmb"],
 ];
 const ROUNDS_SHOWN = 12;
 md.push("## ラン: 何ラウンドまで越えたか", "", "R1〜R12 = そのラウンドを越えたランの割合。", "");
-md.push(`| 打ち方 | カードの取り方 | 越えた数 中央 | 平均 | p10〜p90 | ${Array.from({ length: ROUNDS_SHOWN }, (_, i) => "R" + (i + 1)).join(" | ")} |`);
-md.push(`| --- | --- | ---: | ---: | --- | ${Array.from({ length: ROUNDS_SHOWN }, () => "---:").join(" | ")} |`);
+md.push(`| 打ち方 | カードの取り方 | 1 文の拍 | 越えた数 中央 | 平均 | p10〜p90 | ${Array.from({ length: ROUNDS_SHOWN }, (_, i) => "R" + (i + 1)).join(" | ")} |`);
+md.push(`| --- | --- | ---: | ---: | ---: | --- | ${Array.from({ length: ROUNDS_SHOWN }, () => "---:").join(" | ")} |`);
 const contrib: Record<string, Record<string, { marg: number[]; hit: number[]; t: number[]; tot: number[] }>> = {};
 for (const [ty, pk] of CONFIGS) {
   const rnd = mulberry32(SEED * 1000 + CONFIGS.findIndex((c) => c[0] === ty && c[1] === pk));
@@ -259,7 +294,8 @@ for (const [ty, pk] of CONFIGS) {
   for (let r = 0; r < n; r++) runs.push(await runOnce(ty, pk, rnd, detail));
   const cl = runs.map((r) => r.cleared);
   const rates = Array.from({ length: ROUNDS_SHOWN }, (_, i) => runs.filter((r) => r.cleared >= i + 1).length / runs.length);
-  md.push(`| ${TYPISTS[ty].name} | ${PICKERS[pk].name} | ${q(cl, 0.5)} | ${f1(mean(cl))} | ${q(cl, 0.1)}〜${q(cl, 0.9)} | ${rates.map(pct).join(" | ")} |`);
+    const moraAvg = mean(runs.flatMap((r) => r.sents.map((x) => x.mora)));
+  md.push(`| ${TYPISTS[ty].name} | ${PICKERS[pk].name} | ${f1(moraAvg)} | ${q(cl, 0.5)} | ${f1(mean(cl))} | ${q(cl, 0.1)}〜${q(cl, 0.9)} | ${rates.map(pct).join(" | ")} |`);
   const key = `${ty}/${pk}`;
   out.configs[key] = { runs: n, cleared: cl, rates, owned: runs.map((r) => r.owned) };
   if (detail) {
