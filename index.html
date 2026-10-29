@@ -7,26 +7,29 @@
     <title>freeform typing（試作版）</title>
   </head>
   <body>
-    <div class="app">
+    <!--
+      ゲームの画面。ビューポート全体を使い、ページはスクロールしない（はみ出しは舞台・手持ちの列・履歴の中だけで流す）。
+      配置: 上の帯（hud）／中央の舞台（stage）と点の箱（scorebox）／右の手持ちのカード（side）／下の入力欄（bottom）。
+      縦長の画面では、手持ちのカードは帯の下の横の列になる（base.css）。
+    -->
+    <div class="app" id="app">
       <header class="hud">
-        <div class="hud-title">freeform typing <span class="tag">試作版</span></div>
+        <div class="hud-title">freeform<br class="hud-br" /> typing</div>
         <div class="hud-round"><span class="lbl">ラウンド</span><b id="round">1</b></div>
         <div class="hud-gate" id="gate">
+          <div class="gate-top"><span class="lbl">ゲートまで</span><span id="gate-text" class="gate-text"></span></div>
           <div class="gate-bar"><div id="bar-fill"></div></div>
-          <div id="gate-text" class="gate-text"></div>
         </div>
         <div class="hud-hands" id="hands" title="このラウンドで送れる残りの文"></div>
-        <button id="btn-settings" class="ghost small" title="音・演出の設定">設定</button>
+        <div class="hud-total"><span class="lbl">合計</span><b id="run-total">0</b></div>
+        <div class="hud-btns">
+          <button id="btn-log" class="ghost small" title="これまでに送った文と内訳">これまでの文</button>
+          <button id="btn-settings" class="ghost small" title="音・演出の設定">設定</button>
+        </div>
       </header>
-
-      <section class="deck-wrap">
-        <div class="deck-label">手持ちのルール</div>
-        <div id="deck" class="deck"></div>
-      </section>
 
       <main class="play">
         <section id="stage" class="stage" aria-live="polite"></section>
-
         <section id="scorebox" class="scorebox" title="押すと数え上げを飛ばす">
           <div class="sb-cell sb-chips"><span class="sb-lbl">基本点</span><b id="sb-chips">0</b></div>
           <span class="sb-op">×</span>
@@ -34,25 +37,37 @@
           <span class="sb-op">=</span>
           <div class="sb-cell sb-total"><span class="sb-lbl">この文</span><b id="sb-total">—</b></div>
         </section>
-
-        <div class="inputwrap" id="inputwrap">
-          <input id="text" placeholder="好きな日本語の文を打って Enter（漢字に変換してよい）" autocomplete="off" spellcheck="false" />
-          <span class="ime-badge" aria-hidden="true">変換中</span>
-          <span id="live" class="live"></span>
-          <button id="send">送る</button>
-        </div>
-        <div id="hint" class="hint"></div>
-        <div id="next"></div>
-        <section id="log" class="log"></section>
       </main>
+
+      <aside class="side">
+        <section class="deck-wrap">
+          <div class="side-title">手持ちのカード <span class="side-sub">乗せると説明・押すとくわしく</span></div>
+          <div id="deck" class="deck"></div>
+        </section>
+        <section id="log" class="log"></section>
+      </aside>
+
+      <section class="bottom">
+        <div id="hint" class="hint"></div>
+        <div class="bottom-row">
+          <div class="inputwrap" id="inputwrap">
+            <input id="text" placeholder="好きな日本語の文を打って Enter（漢字に変換してよい）" autocomplete="off" spellcheck="false" />
+            <span class="ime-badge" aria-hidden="true">変換中</span>
+            <span id="live" class="live"></span>
+            <button id="send">送る</button>
+          </div>
+          <div id="next" class="next-slot"></div>
+        </div>
+      </section>
+
+      <footer>
+        <span id="status" class="status"></span>
+        <span class="links"><a href="./bench.html">評価のテストベンチ</a> ・ <a href="https://github.com/RyoKaringumi/freeform-typing">GitHub</a></span>
+      </footer>
     </div>
 
+    <div id="card-tip" class="card-tip hidden" role="tooltip"></div>
     <div id="overlay" class="overlay hidden"><div id="overlay-body" class="overlay-body" role="dialog" aria-modal="true"></div></div>
-
-    <footer>
-      <span id="status" class="status"></span>
-      <span class="links"><a href="./bench.html">評価のテストベンチ</a> ・ <a href="https://github.com/RyoKaringumi/freeform-typing">GitHub</a></span>
-    </footer>
 
     <script type="module" src="/src/game/main.ts"></script>
   </body>

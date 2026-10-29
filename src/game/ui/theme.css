@@ -1,6 +1,6 @@
 /*
-  見た目の変数。色・字・角の丸み・動きの長さはここだけで変えられる。
-  部品ごとの CSS（hud.css・stage.css・input.css・cards.css・overlay.css・breakdown.css・fx.css）は、この変数だけを使う。
+  見た目の変数。色・字・角の丸み・配置の大きさ・動きの長さはここだけで変えられる。
+  部品ごとの CSS（base.css・hud.css・stage.css・input.css・cards.css・overlay.css・screens.css・breakdown.css・fx.css）は、この変数を使う。
 */
 :root {
   /* 地と文字 */
@@ -12,8 +12,8 @@
   --line: #3a3552;
   --text: #ece9f5;
   --text-2: #cfc9e8;
-  --muted: #9a94b0;
-  --faint: #6e6888;
+  --muted: #a29cba;
+  --faint: #78729a;
 
   /* 役目の色 */
   --accent: #8a7cff;
@@ -33,20 +33,36 @@
   --rule: #6fd38f;
   --emb: #c8a8ff;
 
-  /* 字 */
+  /* 判定（効いた・あと少し・効かず）の色 */
+  --hit: #45d483;
+  --near: #ffcf70;
+  --miss: #77718f;
+
+  /*
+    字の大きさ。画面の幅と高さの両方で伸び縮みする（1366×768 で約 17px、1920×1080 で約 23px、2560×1440 で約 30px、上限 34px）。
+    ほかの大きさはすべて rem（この値の何倍か）で書いてあるので、全体を大きく・小さくするならここだけ変える。
+  */
+  --fs-base: clamp(15px, calc(0.6vw + 0.9vh + 2px), 34px);
+  --fs-small: 0.82rem; /* 補足・ラベル（これより小さい字は使わない） */
+  --fs-input: 1.55rem;
+  --fs-stage: 1.9rem; /* 舞台の文（短い文のとき。長い文は stage.css で段階的に小さくする） */
+  --fs-score: 2.4rem;
+  --fs-goal: 1.08rem; /* カードの「何をすると得か」 */
+
+  /* 字の種類 */
   --font-ui: system-ui, "Hiragino Sans", "Yu Gothic UI", "Meiryo", sans-serif;
   --font-type: "BIZ UDGothic", "Hiragino Sans", "Yu Gothic UI", "Meiryo", sans-serif;
-  --fs-base: 15px;
-  --fs-input: 1.5rem;
-  --fs-stage: 1.35rem;
-  --fs-score: 2rem;
+
+  /* 配置（横長の画面: 舞台の右に手持ちのカードの列） */
+  --side-width: clamp(250px, 24vw, 560px);
+  --gap: clamp(8px, 1.2vmin, 22px);
+  --content-max: 2200px; /* とても広い画面では中央に寄せる */
 
   /* 形 */
   --r-sm: 6px;
   --r-md: 10px;
   --r-lg: 14px;
   --shadow: 0 6px 24px #0008;
-  --page-width: 980px;
 
   /* 動きの長さ（演出を減らす設定では 0 になる） */
   --t-fast: 120ms;

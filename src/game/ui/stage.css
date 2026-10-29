@@ -1,57 +1,98 @@
 /* 送った文の数え上げ（舞台）と、基本点×倍率の箱 */
-.stage { min-height: 120px; }
-.st { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-md); padding: 12px 16px; cursor: pointer; }
-.st.dup { border-color: var(--bad); }
-.st-text { font-family: var(--font-type); font-size: var(--fs-stage); font-weight: 600; line-height: 1.4; }
+/* 舞台は残りの高さを全部使い、中身が多ければ舞台の中だけでスクロールする */
+.stage {
+  flex: 1 1 0; min-height: 0; overflow-y: auto; overflow-x: hidden;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-lg);
+  scrollbar-gutter: stable;
+}
+.stage:empty { background: transparent; border-color: transparent; }
+.st { padding: 0.8em 1.1em 0.9em; cursor: pointer; min-height: 100%; display: flex; flex-direction: column; gap: 0.6em; }
+.st.dup { box-shadow: inset 0 0 0 2px var(--bad); border-radius: var(--r-lg); }
+.st-text {
+  font-family: var(--font-type); font-size: var(--fs-stage); font-weight: 700; line-height: 1.35;
+  overflow-wrap: anywhere; word-break: normal;
+}
+/* 長い文ほど一段ずつ小さく（舞台の中で折り返す） */
+.st-text.size-m { font-size: calc(var(--fs-stage) * 0.82); }
+.st-text.size-l { font-size: calc(var(--fs-stage) * 0.68); }
+.st-text.size-xl { font-size: calc(var(--fs-stage) * 0.56); }
+.st-head { display: flex; flex-direction: column; gap: 0.35em; }
+.st-parse > summary { color: var(--muted); font-size: var(--fs-small); cursor: pointer; width: fit-content; }
+.st-parse[open] > summary { display: none; }
+.st-parse .tokens { margin-bottom: 0.25em; }
 .st-tokens .tok { animation: ft-enter var(--t-mid) ease-out both; animation-delay: calc(var(--i) * 24ms); }
-.st-lines { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.st-dup { color: #ff9aa8; font-size: 1.1rem; font-weight: 700; padding: 0.6em 0; }
+
+/* 判定のまとめ */
+.st-summary { display: flex; gap: 0.6em; flex-wrap: wrap; transition: opacity var(--t-mid); }
+.st-summary.pending { opacity: 0; }
+.sm { font-size: 0.9rem; padding: 0.15em 0.7em; border-radius: 99px; border: 1px solid var(--c); color: var(--c); }
+.sm b { font-size: 1.05rem; margin-left: 0.2em; }
+.sm.s-hit { --c: var(--hit); } .sm.s-near { --c: var(--near); } .sm.s-miss { --c: var(--miss); } .sm.s-none { --c: var(--muted); }
+
+/* 内訳の行（効いた・あと少し・効かず の札つき）。広い舞台では 2 列に並ぶ */
+.st-lines {
+  list-style: none; margin: 0; padding: 0; display: grid; gap: 0.4em;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 24em), 1fr));
+}
 .ln {
-  display: grid; grid-template-columns: 8.5em 1fr auto; gap: 10px; align-items: baseline; padding: 4px 8px;
-  border-radius: var(--r-sm); border-left: 3px solid var(--c, var(--line)); background: var(--panel-2); font-size: 0.88rem;
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "state name val" "detail detail detail";
+  column-gap: 0.6em; row-gap: 0.15em; align-items: center; padding: 0.45em 0.7em;
+  border-radius: var(--r-md); border-left: 5px solid var(--c, var(--line)); background: var(--panel-2);
   transition: opacity var(--t-mid), transform var(--t-mid);
 }
-.ln.k-base { --c: var(--chips); }
-.ln.k-chips { --c: var(--chips); }
+.ln.k-base, .ln.k-chips { --c: var(--chips); }
 .ln.k-mult { --c: var(--mult); }
 .ln.k-xmult { --c: var(--xmult); }
+.ln.k-rule { --c: var(--rule); }
 .ln.pending { opacity: 0; transform: translateX(-8px); }
-.ln.miss { opacity: 0.45; }
-.ln.miss.pending { opacity: 0; }
-.ln-name { font-weight: 600; white-space: nowrap; }
-.ln-detail { color: var(--muted); }
-.ln-val { font-weight: 800; font-variant-numeric: tabular-nums; color: var(--c); white-space: nowrap; }
-.ln.miss .ln-val { color: var(--muted); }
-.st-formula { margin-top: 8px; text-align: right; font-variant-numeric: tabular-nums; transition: opacity var(--t-mid); }
-.st-formula.pending { opacity: 0; }
-.st-formula b { font-size: 1.4rem; }
-.st-table { margin-top: 6px; }
-.st-table summary { color: var(--muted); font-size: 0.8rem; cursor: pointer; }
+.ln-state { grid-area: state; font-size: 0.72rem; font-weight: 800; padding: 0.1em 0.5em; border-radius: 4px; white-space: nowrap; }
+.ln.s-hit .ln-state { background: var(--hit); color: #0c1a12; }
+.ln.s-near .ln-state { background: var(--near); color: #2a1e00; }
+.ln.s-miss .ln-state { background: transparent; color: var(--miss); border: 1px solid var(--miss); }
+.ln.k-base .ln-state { background: var(--chips); color: #06192e; }
+.ln-name { grid-area: name; font-weight: 700; font-size: 1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ln-val { grid-area: val; font-weight: 800; font-size: 1.25rem; font-variant-numeric: tabular-nums; color: var(--c); white-space: nowrap; }
+.ln-detail { grid-area: detail; color: var(--text-2); font-size: var(--fs-small); line-height: 1.45; overflow-wrap: anywhere; }
+.ln-tip { display: block; color: var(--near); font-weight: 700; }
+.ln.s-miss { background: color-mix(in srgb, var(--panel-2) 55%, transparent); }
+.ln.s-miss .ln-name, .ln.s-miss .ln-val { color: var(--muted); }
+.ln.s-miss .ln-detail { color: var(--muted); }
+.ln.s-near { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--near) 50%, transparent); }
+.ln.s-near .ln-val { color: var(--muted); }
 
-.round-start { text-align: center; padding: 22px 0; }
-.rs-round { font-size: 2rem; font-weight: 800; letter-spacing: 0.04em; }
-.rs-gate { color: var(--text-2); }
-.rs-gate b { color: var(--gold); font-size: 1.2rem; }
+.st-foot { margin-top: auto; display: flex; justify-content: space-between; align-items: flex-end; gap: 1em; flex-wrap: wrap-reverse; }
+.st-formula { font-variant-numeric: tabular-nums; transition: opacity var(--t-mid); font-size: 1.05rem; margin-left: auto; }
+.st-formula.pending { opacity: 0; }
+.st-formula b { font-size: 1.5rem; }
+.st-table summary { color: var(--muted); font-size: var(--fs-small); cursor: pointer; }
+
+.round-start { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.4em; text-align: center; padding: 1em; }
+.rs-round { font-size: 3.2rem; font-weight: 900; letter-spacing: 0.04em; }
+.rs-gate { color: var(--text-2); font-size: 1.3rem; }
+.rs-gate b { color: var(--gold); font-size: 1.8rem; }
+.rs-tip { color: var(--muted); font-size: 1rem; margin-top: 0.6em; max-width: 34em; line-height: 1.6; }
 
 /* 基本点 × 倍率 = この文 */
-.scorebox { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 12px 0 2px; cursor: pointer; user-select: none; }
+.scorebox { flex: 0 0 auto; display: flex; align-items: center; justify-content: center; gap: 0.6em; cursor: pointer; user-select: none; }
 .sb-cell {
-  display: flex; flex-direction: column; align-items: center; min-width: 6.5em; padding: 6px 14px 8px;
+  display: flex; flex-direction: column; align-items: center; min-width: 5.2em; padding: 0.25em 0.9em 0.35em;
   border-radius: var(--r-md); background: var(--panel-2); border: 1px solid var(--line);
 }
-.sb-cell b { font-size: var(--fs-score); font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.1; display: inline-block; }
-.sb-lbl { font-size: 0.7rem; color: var(--muted); }
+.sb-cell b { font-size: var(--fs-score); font-weight: 900; font-variant-numeric: tabular-nums; line-height: 1.05; display: inline-block; }
+.sb-lbl { font-size: var(--fs-small); color: var(--text-2); }
 .sb-chips { background: color-mix(in srgb, var(--chips) 22%, var(--panel)); border-color: color-mix(in srgb, var(--chips) 60%, var(--line)); }
 .sb-chips b { color: #cfe6ff; }
 .sb-mult { background: color-mix(in srgb, var(--mult) 22%, var(--panel)); border-color: color-mix(in srgb, var(--mult) 60%, var(--line)); }
 .sb-mult b { color: #ffd2d9; }
-.sb-total { min-width: 7.5em; }
-.sb-op { font-size: 1.5rem; color: var(--muted); font-weight: 700; }
+.sb-total { min-width: 6.5em; }
+.sb-op { font-size: 1.8rem; color: var(--muted); font-weight: 700; }
 .scorebox.big .sb-total { border-color: var(--gold); box-shadow: 0 0 20px #ffd34a55; }
 .scorebox.big .sb-total b { color: var(--gold); }
 .scorebox.dup .sb-cell { border-color: var(--bad); }
 .scorebox:not(.active) .sb-cell { opacity: 0.92; }
-@media (max-width: 640px) {
-  .sb-cell { min-width: 4.8em; padding: 4px 8px; }
-  .sb-cell b { font-size: 1.5rem; }
-  .ln { grid-template-columns: 7em 1fr auto; }
+
+/* 背の低い画面では点の箱を少し詰める */
+@media (max-height: 720px) {
+  .sb-cell b { font-size: calc(var(--fs-score) * 0.85); }
 }

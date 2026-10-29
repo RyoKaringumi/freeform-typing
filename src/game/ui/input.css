@@ -1,16 +1,16 @@
 /* 入力欄（打鍵・変換中・確定・送る の反応） */
 .inputwrap {
-  position: relative; display: flex; gap: 8px; align-items: stretch; margin-top: 10px;
+  position: relative; display: flex; gap: 8px; align-items: stretch;
   --ring: var(--button);
 }
 #text {
-  flex: 1; min-width: 0; font-family: var(--font-type); font-size: var(--fs-input); padding: 12px 14px;
+  flex: 1; min-width: 0; font-family: var(--font-type); font-size: var(--fs-input); padding: 0.4em 0.6em;
   background: #0f0e15; color: #fff; border: 2px solid var(--ring); border-radius: var(--r-md); outline: none;
   transition: border-color var(--t-fast), box-shadow var(--t-fast); caret-color: var(--accent);
 }
 .inputwrap.focus { --ring: var(--accent); }
 .inputwrap.focus #text { box-shadow: 0 0 0 3px #8a7cff33; }
-#send { font-size: 1rem; padding: 0 22px; border-radius: var(--r-md); }
+#send { font-size: 1.1rem; padding: 0 1.4em; border-radius: var(--r-md); }
 
 /* 打鍵ごとの小さな反応 */
 @keyframes ft-tap { 0% { box-shadow: 0 0 0 3px #8a7cff55, 0 0 14px #8a7cff55; } 100% { box-shadow: 0 0 0 3px #8a7cff22; } }
@@ -21,7 +21,7 @@
 
 /* IME の変換中 */
 .ime-badge {
-  position: absolute; top: -9px; left: 14px; font-size: 0.7rem; font-weight: 700; padding: 1px 7px; border-radius: 4px;
+  position: absolute; top: -0.7em; left: 1em; font-size: 0.75rem; font-weight: 700; padding: 1px 7px; border-radius: 4px;
   background: var(--warn); color: #222; opacity: 0; transform: translateY(4px); transition: opacity var(--t-fast), transform var(--t-fast);
   pointer-events: none;
 }
@@ -40,6 +40,6 @@
 
 /* 打っている途中の拍（設定で出す） */
 .live {
-  position: absolute; right: 110px; top: 50%; transform: translateY(-50%); color: var(--muted);
+  position: absolute; right: 7em; top: 50%; transform: translateY(-50%); color: var(--muted);
   font-size: 0.85rem; font-variant-numeric: tabular-nums; pointer-events: none;
 }

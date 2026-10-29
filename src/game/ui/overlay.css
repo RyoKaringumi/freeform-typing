@@ -1,39 +1,30 @@
-/* 重ねる枠（カード選択・説明・設定・結果） */
+/* 重ねる枠（カード選択・説明・設定・これまでの文）。タイトルとゲームオーバーは screens.css */
 .overlay {
-  position: fixed; inset: 0; background: #0b0a10cc; display: flex; align-items: center; justify-content: center;
-  padding: 16px; z-index: 20; backdrop-filter: blur(3px); animation: ft-enter var(--t-fast) ease-out;
+  position: fixed; inset: 0; background: #0b0a10d9; display: flex; align-items: center; justify-content: center;
+  padding: var(--gap); z-index: 20; backdrop-filter: blur(3px); animation: ft-enter var(--t-fast) ease-out;
 }
 .overlay.hidden { display: none; }
 .overlay-body {
-  background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 10px 22px 18px;
-  max-width: 920px; width: 100%; max-height: 92vh; overflow: auto; box-shadow: var(--shadow); animation: ft-enter var(--t-mid) ease-out;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 0.6em 1.4em 1.1em;
+  max-width: min(60em, 96vw); width: 100%; max-height: calc(100dvh - var(--gap) * 2); overflow: auto; box-shadow: var(--shadow); animation: ft-enter var(--t-mid) ease-out;
 }
-.overlay-body.narrow { max-width: 560px; }
-.overlay-body h2 { font-size: 1.2rem; }
-.ov-actions { display: flex; gap: 8px; justify-content: flex-end; align-items: center; margin-top: 8px; }
-.ov-keys { color: var(--muted); font-size: 0.8rem; margin-right: auto; }
-.ov-lead { margin: 4px 0; color: var(--text-2); }
+.overlay-body.narrow { max-width: min(34em, 96vw); }
+.overlay-body.offers-screen { max-width: min(72em, 96vw); }
+.overlay-body h2 { font-size: 1.3rem; }
+.ov-actions { display: flex; gap: 8px; justify-content: flex-end; align-items: center; margin-top: 0.6em; flex-wrap: wrap; }
+.ov-keys { color: var(--muted); font-size: var(--fs-small); margin-right: auto; }
+.ov-lead { margin: 0.3em 0; color: var(--text-2); text-align: center; font-size: 1rem; }
 
-.clear-head { text-align: center; padding: 10px 0 4px; }
-.ch-title { font-size: 1.8rem; font-weight: 800; color: var(--good-2); text-shadow: 0 0 18px #45d48366; }
-.ch-stats { display: flex; gap: 18px; justify-content: center; flex-wrap: wrap; color: var(--text-2); margin-top: 4px; }
-.ch-stats b { color: var(--text); font-size: 1.1rem; }
+.clear-head { text-align: center; padding: 0.5em 0 0.2em; }
+.ch-title { font-size: 2.4rem; font-weight: 900; color: var(--good-2); text-shadow: 0 0 18px #45d48366; }
+.ch-stats { display: flex; gap: 1.2em; justify-content: center; flex-wrap: wrap; color: var(--text-2); margin-top: 0.2em; font-size: 1.05rem; }
+.ch-stats b { color: var(--text); font-size: 1.3rem; }
 
-.over-head { text-align: center; padding: 10px 0; }
-.oh-title { font-size: 1.8rem; font-weight: 800; color: #ff9aa8; }
-.oh-sub { color: var(--muted); }
-.over-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 10px 0; }
-.over-stats > div { background: var(--panel-2); border-radius: var(--r-sm); padding: 8px; text-align: center; }
-.over-stats b { display: block; font-size: 1.5rem; font-variant-numeric: tabular-nums; }
-.lbl { color: var(--muted); font-size: 0.75rem; }
-.over-best, .over-deck { color: var(--text-2); }
-.over-best b { color: var(--gold); }
-
-.settings { display: flex; flex-direction: column; gap: 12px; margin: 8px 0; }
-.set-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
-.set-name { width: 6.5em; color: var(--muted); font-size: 0.85rem; }
+.settings { display: flex; flex-direction: column; gap: 0.8em; margin: 0.5em 0; }
+.set-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5em 1em; }
+.set-name { width: 6.5em; color: var(--muted); font-size: var(--fs-small); }
 .opt { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
 .set-n { font-variant-numeric: tabular-nums; color: var(--muted); width: 2em; }
-#set-volume { width: 140px; accent-color: var(--accent); }
+#set-volume { width: 9em; accent-color: var(--accent); }
 
-@media (max-width: 640px) { .over-stats { grid-template-columns: repeat(2, 1fr); } }
+.log-ov { max-height: none; }
