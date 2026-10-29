@@ -8,7 +8,8 @@
     "copy-dict": "node scripts/copy-dict.mjs",
     "dev": "npm run copy-dict && vite",
     "build": "npm run copy-dict && tsc --noEmit && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "sim": "node tools/sim/build.mjs && node tools/sim/.out/sim.mjs"
   },
   "dependencies": {
     "@huggingface/transformers": "^4.3.2",

@@ -1,11 +1,11 @@
 // ゲーム側から Worker の埋め込みを使う窓口。文字列ごとにベクトルをキャッシュする（同じ文字列は同じベクトル）。
 import type { ModelLoadInfo } from "../embed";
-import { cosine } from "../vec";
+import type { Embedder } from "./distance";
 import { REF_SENTENCES, REF_WORDS } from "./refs";
 
 type Pending = { resolve: (v: any) => void; reject: (e: unknown) => void };
 
-export class EmbedClient {
+export class EmbedClient implements Embedder {
   private worker: Worker;
   private nextId = 1;
   private pending = new Map<number, Pending>();
@@ -72,21 +72,4 @@ export class EmbedClient {
     p.catch(() => this.cache.delete(text));
     return p;
   }
-}
-
-/**
- * 生の cos は狭い幅に詰まるので、基準との順位で 0〜1 に引き伸ばす。
- * anchor から見て、基準のベクトルのうち target より anchor に近いものの割合。
- * 1 に近いほど「ふつうの文（語）のほとんどより遠い」。
- */
-export function farness(anchor: number[], target: number[], refs: number[][]): { t: number; beaten: number; of: number; cos: number } {
-  const c = cosine(anchor, target);
-  let beaten = 0, of = 0;
-  for (const r of refs) {
-    const x = cosine(anchor, r);
-    if (x > 0.9999) continue; // anchor が基準と同じ文字列なら、その基準は数えない
-    of++;
-    if (x > c) beaten++;
-  }
-  return { t: of ? beaten / of : 0, beaten, of, cos: c };
 }

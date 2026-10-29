@@ -2,21 +2,11 @@ import "./game.css";
 import type { IpadicFeatures, Tokenizer } from "kuromoji";
 import { analyze, loadTokenizer, type TokenRow } from "../morph";
 import { EmbedClient } from "./embed-client";
+import { drawOffers, gateFor, HANDS, OFFER_COUNT } from "./rules";
 import { BASE_CAP, CARDS, CARD_BY_ID, scoreSentence, type Breakdown, type CardDef, type Line, type Played } from "./cards";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
-
-// ---- 決めごと ----
-export const HANDS = 5; // 1 ラウンドで送れる文の数
-const GATES = [80, 150, 250, 400, 600, 900, 1300, 1900];
-export function gateFor(round: number): number {
-  if (round <= GATES.length) return GATES[round - 1];
-  let g = GATES[GATES.length - 1];
-  for (let r = GATES.length; r < round; r++) g = Math.round((g * 1.5) / 50) * 50;
-  return g;
-}
-const OFFER_COUNT = 3;
 
 const SEEN_KEY = "freeform-typing.seen-cards.v1";
 const BEST_KEY = "freeform-typing.best.v1";
@@ -238,9 +228,7 @@ function clearRound() {
   const best = Number(localStorage.getItem(BEST_KEY) ?? "0");
   if (S.round > best) localStorage.setItem(BEST_KEY, String(S.round));
   // 3 枚を無作為に（引くのは毎回ちがってよい。点の計算は決定的）
-  const offers: string[] = [];
-  const p = pool.slice();
-  while (offers.length < OFFER_COUNT && p.length) offers.push(p.splice(Math.floor(Math.random() * p.length), 1)[0].id);
+  const offers = drawOffers(pool).map((c) => c.id);
   S.offers = offers;
   const used = HANDS - S.handsLeft;
   const head = `<h2>ラウンド ${S.round} クリア</h2><p>${used} 文で ${S.roundScore} 点（ゲート ${gateFor(S.round)}）。次のゲートは ${gateFor(S.round + 1)} 点。</p>`;
