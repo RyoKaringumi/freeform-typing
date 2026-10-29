@@ -4,7 +4,7 @@
 import "./stage.css";
 import { sfx } from "../fx/audio";
 import { bump, burst, countUp, floatText, type Run } from "../fx/motion";
-import { breakdownTable, formulaHtml, speedText, tokenChips, type Entry } from "./breakdown";
+import { breakdownTable, formulaHtml, moraDetail, speedText, tokenChips, type Entry } from "./breakdown";
 import { fireDeckCard } from "./cards-view";
 import { $, esc, fmtMult } from "./dom";
 import { setGateShown } from "./hud";
@@ -52,13 +52,12 @@ export async function playScoring(run: Run, e: Entry, vs: Verdict[], o: { roundF
   const stage = $("stage");
   const byId = new Map(vs.map((v) => [v.card.id, v]));
   const rows: Row[] = [{ v: null, kind: "base", amount: b.base }];
-  const html: string[] = [rowHtml(0, "base", "hit", "読みの音の数", `${b.mora} 拍${b.mora > b.cap ? `（上限 ${b.cap} で頭打ち）` : `（上限 ${b.cap}）`}`, String(b.base))];
+  const html: string[] = [rowHtml(0, "base", "hit", "読みの音の数", moraDetail(b), String(b.base))];
   const add = (v: Verdict | undefined, kind: Kind, amount: number) => {
     if (!v) return;
     html.push(rowHtml(rows.length, kind, v.state, v.card.name, v.why, v.value, v.tip));
     rows.push({ v, kind, amount });
   };
-  add(byId.get("long"), "rule", 0);
   for (const l of b.chipLines) add(byId.get(l.card.id), "chips", l.result.amount);
   for (const l of b.multLines) add(byId.get(l.card.id), "mult", l.result.amount);
   for (const l of b.xLines) add(byId.get(l.card.id), "xmult", l.result.amount);

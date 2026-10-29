@@ -1,7 +1,7 @@
 // 1 文の内訳（解析の区切りと、カードごとの効き方）の表。履歴の一覧と、数え上げのあとの表示に使う。
 import "./breakdown.css";
 import type { TokenRow } from "../../morph";
-import type { Breakdown, Line, Played } from "../cards";
+import { perMora, type Breakdown, type Line, type Played } from "../cards";
 import { esc, fmtMult } from "./dom";
 
 export type Entry = Played & { round: number; bd: Breakdown; keys: number; secs: number };
@@ -21,15 +21,21 @@ function lineRow(l: Line, fmt: (x: number) => string) {
 }
 
 export function formulaHtml(b: Breakdown) {
+  const pm = perMora(b);
   return b.duplicate
     ? `このランで同じ文を前にも送ったので <b>0</b> 点`
-    : `${b.chips} × ${fmtMult(b.mult)}${b.xmult !== 1 ? ` × ${fmtMult(b.xmult)}` : ""} = <b>${b.total}</b> 点`;
+    : `${b.chips} × ${fmtMult(b.mult)}${b.xmult !== 1 ? ` × ${fmtMult(b.xmult)}` : ""} = <b>${b.total}</b> 点${pm !== null ? `<span class="per-mora">${b.cost} 拍・1 拍あたり <b>${pm}</b> 点</span>` : ""}`;
+}
+
+/** 基本点の行の説明（拍と、予算から引く拍） */
+export function moraDetail(b: Breakdown) {
+  return `${b.mora} 拍${b.cost !== b.mora ? `（予算から引くのは ${b.cost} 拍。読めない字は 1 字 1 拍）` : ""}`;
 }
 
 export function breakdownTable(b: Breakdown) {
   const rows = [
     `<tr class="sec"><td colspan="3">基本点</td></tr>`,
-    `<tr class="hit"><td class="n">読みの音の数</td><td class="d">${b.mora} 拍${b.mora > b.cap ? `（上限 ${b.cap} で頭打ち）` : `（上限 ${b.cap}）`}</td><td class="v">${b.base}</td></tr>`,
+    `<tr class="hit"><td class="n">読みの音の数</td><td class="d">${moraDetail(b)}</td><td class="v">${b.base}</td></tr>`,
     ...b.chipLines.map((l) => lineRow(l, (x) => `＋${x}`)),
     `<tr class="sum"><td colspan="2">基本点</td><td class="v">${b.chips}</td></tr>`,
     `<tr class="sec"><td colspan="3">倍率</td></tr>`,
@@ -64,7 +70,7 @@ export function renderLog(el: HTMLElement, played: Entry[]) {
       r = e.round;
       parts.push(`<div class="log-round">ラウンド ${r}</div>`);
     }
-    parts.push(`<details class="log-e"><summary><span class="log-t">${esc(e.text)}</span><span class="log-s">${e.total} 点</span></summary>${breakdownHtml(e)}</details>`);
+    parts.push(`<details class="log-e"><summary><span class="log-t">${esc(e.text)}</span><span class="log-s">${e.total} 点<small>${e.bd.cost} 拍</small></span></summary>${breakdownHtml(e)}</details>`);
   }
   el.innerHTML = parts.length ? `<div class="log-title">これまでの文（押すと内訳が開く）</div>${parts.join("")}` : "";
 }

@@ -1,7 +1,7 @@
 // 点の釣り合いの集計。ゲームと同じ採点の関数（src/game/cards.ts の scoreSentence）に文例を通し、
 // 「どんな文を打つか」と「どのカードを取るか」の方針を変えて多数のランを回す。
 //
-//   npm run sim -- [--runs 200] [--seed 1] [--out tools/sim/out] [--tune '{"haiku":{"x":2}}'] [--gates 80,150,...]
+//   npm run sim -- [--runs 200] [--seed 1] [--out tools/sim/out] [--tune '{"haiku":{"x":2}}'] [--gates 80,150,...] [--budget 100] [--hands 5]
 //
 // 埋め込みは Node の transformers.js で ruri-v3-30m（ゲームと同じモデル・q8）を使う。ブラウザ（wasm）とは
 // 小数の下の方がわずかに違いうる。ベクトルは tools/sim/.cache/ に保存し、2 回目からは読むだけ。
@@ -9,8 +9,8 @@ import kuromoji from "kuromoji";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { analyze, type MorphResult } from "../../src/morph";
-import { CARDS, CARD_BY_ID, TUNING, moraCount, scoreSentence, type Played } from "../../src/game/cards";
-import { HANDS, GATES, drawOffers, gateFor } from "../../src/game/rules";
+import { CARDS, CARD_BY_ID, TUNING, budgetCost, moraCount, scoreSentence, type Played } from "../../src/game/cards";
+import { HANDS, GATES, MORA_BUDGET, drawOffers, gateFor } from "../../src/game/rules";
 import { REF_SENTENCES, REF_WORDS } from "../../src/game/refs";
 import type { Embedder } from "../../src/game/distance";
 import { CASUAL_CATS, CATS, CORPUS } from "./corpus";
@@ -36,6 +36,9 @@ function deepMerge(a: any, b: any) {
 }
 if (arg("tune")) deepMerge(TUNING, JSON.parse(arg("tune")!));
 if (arg("gates")) GATES.splice(0, GATES.length, ...arg("gates")!.split(",").map(Number));
+/** 1 ラウンドの文の数と拍の予算（--budget 0 で予算なし） */
+const HANDS_N = Number(arg("hands", String(HANDS)));
+const BUDGET = Number(arg("budget", String(MORA_BUDGET))) || Infinity;
 
 // ---- 乱数（種付き） ----
 function mulberry32(a: number) {
@@ -71,10 +74,10 @@ async function rawEmbed(text: string): Promise<number[]> {
 const emb: Embedder = { embed: async (t) => rawEmbed(t), refSent: [], refWord: [] };
 
 // ---- 文例の下ごしらえ ----
-type Item = { id: number; cat: string; text: string; morph: MorphResult; mora: number };
+type Item = { id: number; cat: string; text: string; morph: MorphResult; mora: number; cost: number };
 const items: Item[] = CORPUS.map((s, id) => {
   const morph = analyze(tokenizer, s.text);
-  return { id, cat: s.cat, text: s.text, morph, mora: moraCount(morph.reading) };
+  return { id, cat: s.cat, text: s.text, morph, mora: moraCount(morph.reading), cost: budgetCost(morph) };
 });
 {
   const need = new Set<string>([...REF_SENTENCES, ...REF_WORDS]);
@@ -87,15 +90,16 @@ const items: Item[] = CORPUS.map((s, id) => {
   emb.refWord = REF_WORDS.map((s) => vecCache[s]);
 }
 const casualItems = items.filter((i) => CASUAL_CATS.includes(i.cat));
-/** 1 ラウンドの拍の予算（無ければ Infinity）と、1 文が使う拍 */
-const BUDGET = Infinity;
-const cost = (it: Item) => it.mora;
-/** 打ち方ごとの「思いつく文」の範囲 */
-const LONG_MIN = 35, SHORT_MAX = 15;
+/** 1 文がラウンドの拍の予算から使う量 */
+const cost = (it: Item) => it.cost;
+/**
+ * 打ち方ごとの「思いつく文」の範囲。長い文と短い文は、ふつうの文と詰め込んだ文を同じくらいずつ含むように、
+ * 長い = long（ふつうの長文 30）＋ longlist（詰め込んだ長文 20）、短い = short（ふつうの短文 40）＋ shortlist（詰め込んだ短文 30）。
+ */
 const POOLS: Record<string, (i: Item) => boolean> = {
   casual: (i) => CASUAL_CATS.includes(i.cat),
-  long: (i) => i.mora >= LONG_MIN,
-  short: (i) => i.mora <= SHORT_MAX,
+  long: (i) => i.cat === "long" || i.cat === "longlist",
+  short: (i) => i.cat === "short" || i.cat === "shortlist",
   all: () => true,
 };
 
@@ -139,16 +143,16 @@ const inPool = (avail: Item[], pool: string) => {
 const TYPISTS: Record<string, Typist> = {
   // カードを気にせず、ふつうの文を打つ
   casual: { name: "ふつうに打つ", pool: "casual", choose: async (avail, _h, _r, _o, rnd) => pickRandom(inPool(avail, "casual"), rnd) },
-  // カードを見ずに、思いついた 8 文（35 拍以上）のうち一番長い文を打つ
+  // カードを見ずに、思いついた長い文 8 つのうち一番長い文を打つ
   long: {
-    name: "長い文ばかり打つ（8 文から一番長い文）",
+    name: "長い文ばかり打つ（長い文 8 つから一番長い文）",
     pool: "long",
     choose: async (avail, _h, _r, _o, rnd) => sample(inPool(avail, "long"), 8, rnd).reduce((a, b) => (b.mora > a.mora ? b : a)),
   },
-  // 長い文（35 拍以上）を 8 つ思いつき、いまのカードで一番得なものを打つ
-  longThink: { name: "長い文で狙う（35 拍以上の 8 文から）", pool: "long", choose: async (avail, h, r, o, rnd, left) => bestOf(sample(inPool(avail, "long"), 8, rnd), h, r, o, left) },
-  // 短い文（15 拍以下）を 8 つ思いつき、いまのカードで一番得なものを打つ
-  shortThink: { name: "短い文で狙う（15 拍以下の 8 文から）", pool: "short", choose: async (avail, h, r, o, rnd, left) => bestOf(sample(inPool(avail, "short"), 8, rnd), h, r, o, left) },
+  // 長い文を 8 つ思いつき、いまのカードで一番得なものを打つ
+  longThink: { name: "長い文で狙う（長い文 8 つから）", pool: "long", choose: async (avail, h, r, o, rnd, left) => bestOf(sample(inPool(avail, "long"), 8, rnd), h, r, o, left) },
+  // 短い文を 8 つ思いつき、いまのカードで一番得なものを打つ
+  shortThink: { name: "短い文で狙う（短い文 8 つから）", pool: "short", choose: async (avail, h, r, o, rnd, left) => bestOf(sample(inPool(avail, "short"), 8, rnd), h, r, o, left) },
   // 思いついた 8 文のうち、いまのカードで一番得なものを打つ（少し考える）
   think8: { name: "少し考える（8 文から）", pool: "all", choose: async (avail, h, r, o, rnd, left) => bestOf(sample(avail, 8, rnd), h, r, o, left) },
   // 文例の全部から一番得なものを打つ（よく考える。上限の目安）
@@ -197,8 +201,8 @@ async function runOnce(typist: string, picker: string, rnd: () => number, detail
   let round = 1;
   for (; round <= MAX_ROUND; round++) {
     let sum = 0, spent = 0;
-    for (let h = 0; h < HANDS && sum < gateFor(round); h++) {
-      const left: Left = { hands: HANDS - h, budget: BUDGET - spent };
+    for (let h = 0; h < HANDS_N && sum < gateFor(round); h++) {
+      const left: Left = { hands: HANDS_N - h, budget: BUDGET - spent };
       const avail = items.filter((i) => !used.has(i.id) && cost(i) <= left.budget);
       if (!avail.length) break;
       const it = await TYPISTS[typist].choose(avail, hist, round, owned, rnd, left);
@@ -244,12 +248,12 @@ const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.l
 const f1 = (x: number) => (Number.isFinite(x) ? x.toFixed(1) : "—");
 const pct = (x: number) => (Number.isFinite(x) ? Math.round(x * 100) + "%" : "—");
 const md: string[] = [];
-const out: any = { label: LABEL, runs: RUNS, seed: SEED, tuning: TUNING, gates: GATES.slice(), configs: {} };
-md.push(`# 集計 ${LABEL}（各 ${RUNS} ラン、種 ${SEED}）`, "", "ゲート: " + Array.from({ length: 12 }, (_, i) => gateFor(i + 1)).join(", "), "", "TUNING: `" + JSON.stringify(TUNING) + "`", "");
+const out: any = { label: LABEL, runs: RUNS, seed: SEED, hands: HANDS_N, budget: BUDGET, tuning: TUNING, gates: GATES.slice(), configs: {} };
+md.push(`# 集計 ${LABEL}（各 ${RUNS} ラン、種 ${SEED}）`, "", `1 ラウンド: ${HANDS_N} 文・拍の予算 ${BUDGET === Infinity ? "なし" : BUDGET}`, "", "ゲート: " + Array.from({ length: 12 }, (_, i) => gateFor(i + 1)).join(", "), "", "TUNING: `" + JSON.stringify(TUNING) + "`", "");
 
 // 1) 文例そのものの点（カード 1 枚だけ持ったとき）。prev は同じ種類の別の文。
 {
-  md.push("## カード 1 枚だけのときの 1 文の点", "", "ふつう = 「ふつうに打つ」文例の平均、上位 = 全文例で点の高い 10 文の平均、効いた割合 = ふつうの文例のうちそのカードが効いた割合。カード無しの基本点だけだと、ふつう " + f1(mean(casualItems.map((i) => Math.min(i.mora, TUNING.baseCap)))) + " 点。", "");
+  md.push("## カード 1 枚だけのときの 1 文の点", "", "ふつう = 「ふつうに打つ」文例の平均、上位 = 全文例で点の高い 10 文の平均、効いた割合 = ふつうの文例のうちそのカードが効いた割合。カード無しの基本点だけだと、ふつう " + f1(mean(casualItems.map((i) => i.mora))) + " 点。", "");
   md.push("| カード | ふつう | 上位 10 | 効いた割合 |", "| --- | ---: | ---: | ---: |");
   const rnd = mulberry32(SEED + 77);
   for (const c of CARDS) {
@@ -262,7 +266,7 @@ md.push(`# 集計 ${LABEL}（各 ${RUNS} ラン、種 ${SEED}）`, "", "ゲー�
       all.push(bd.total);
       if (CASUAL_CATS.includes(it.cat)) {
         cas.push(bd.total);
-        if ([...bd.chipLines, ...bd.multLines, ...bd.xLines].some((l) => l.result.hit) || (c.id === "long" && it.mora > TUNING.baseCap)) hit++;
+        if ([...bd.chipLines, ...bd.multLines, ...bd.xLines].some((l) => l.result.hit)) hit++;
       }
     }
     all.sort((a, b) => b - a);
@@ -271,6 +275,31 @@ md.push(`# 集計 ${LABEL}（各 ${RUNS} ラン、種 ${SEED}）`, "", "ゲー�
   md.push("");
   // 文例の種類ごとの拍
   md.push("文例の種類ごとの拍（平均・17 拍ちょうどの数）: " + CATS.map((cat) => { const xs = items.filter((i) => i.cat === cat); return `${cat} ${f1(mean(xs.map((i) => i.mora)))}（${xs.filter((i) => i.mora === 17).length}/${xs.length}）`; }).join("、"), "");
+}
+
+// 1b) 文例の種類ごとの 1 拍あたりの点（長い文が拍のわりに得かを見る）。前の文は無作為に選んだ別の文例 1 つ。
+{
+  const sets: [string, string[]][] = [
+    ["カード無し", []],
+    ["形態素のカード全部", CARDS.filter((c) => c.source === "形態素").map((c) => c.id)],
+    ["形態素（長文の心得を除く）", CARDS.filter((c) => c.source === "形態素" && c.id !== "long").map((c) => c.id)],
+    ["全部", CARDS.map((c) => c.id)],
+  ];
+  md.push("## 文例の種類ごとの 1 拍あたりの点", "", "1 文の点 ÷ その文が使う拍（予算から引く量）の平均。前の文は無作為に選んだ別の文例 1 つ。", "");
+  md.push(`| 種類 | 拍 | ${sets.map((x) => x[0]).join(" | ")} |`, `| --- | ---: | ${sets.map(() => "---:").join(" | ")} |`);
+  const rnd = mulberry32(SEED + 99);
+  const prevOf = new Map(items.map((it) => [it.id, pickRandom(items.filter((x) => x.id !== it.id), rnd)]));
+  for (const cat of CATS) {
+    const xs = items.filter((i) => i.cat === cat && i.cost > 0);
+    const cols: string[] = [];
+    for (const [, owned] of sets) {
+      const v: number[] = [];
+      for (const it of xs) v.push((await score(it, [{ item: prevOf.get(it.id)!, total: 0, round: 1 }], 1, owned)).total / it.cost);
+      cols.push(f1(mean(v)));
+    }
+    md.push(`| ${cat} | ${f1(mean(xs.map((i) => i.cost)))} | ${cols.join(" | ")} |`);
+  }
+  md.push("");
 }
 
 // 2) ラン

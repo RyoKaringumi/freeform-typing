@@ -5,8 +5,8 @@ import "./ui/fx.css";
 import type { IpadicFeatures, Tokenizer } from "kuromoji";
 import { analyze, loadTokenizer } from "../morph";
 import { EmbedClient } from "./embed-client";
-import { BASE_CAP, CARDS, moraCount, scoreSentence, type CardDef } from "./cards";
-import { drawOffers, gateFor, HANDS } from "./rules";
+import { budgetCost, CARDS, scoreSentence, type CardDef } from "./cards";
+import { drawOffers, gateFor, HANDS, MORA_BUDGET } from "./rules";
 import { sfx, unlockAudio } from "./fx/audio";
 import { bump, confetti, Run } from "./fx/motion";
 import { onSettings, settings, updateSettings } from "./fx/settings";
@@ -14,7 +14,7 @@ import { renderLog, type Entry } from "./ui/breakdown";
 import { setExampleEnv } from "./ui/card-guide";
 import { hideTip, showOffers } from "./ui/cards-view";
 import { $, esc } from "./ui/dom";
-import { renderHud } from "./ui/hud";
+import { previewBudget, renderHud } from "./ui/hud";
 import { initInput, setInputEnabled, takeKeyStats } from "./ui/input";
 import { closeOverlay, initOverlay, openOverlay, overlayOpen } from "./ui/overlay";
 import { playScoring, stageIntro } from "./ui/scoring";
@@ -34,6 +34,8 @@ const S = {
   played: [] as Entry[],
   roundScore: 0,
   handsLeft: HANDS,
+  /** このラウンドで残っている拍 */
+  budgetLeft: MORA_BUDGET,
   phase: "title" as Phase,
   offers: [] as string[],
   runTotal: 0,
@@ -81,6 +83,8 @@ function hud(newCard?: string, withVerdicts = true) {
       shown,
       handsLeft: S.handsLeft,
       hands: HANDS,
+      budgetLeft: S.budgetLeft,
+      budget: MORA_BUDGET,
       owned: S.owned,
       runTotal: S.runTotal,
       verdicts: withVerdicts ? lastVerdicts : [],
@@ -94,11 +98,13 @@ function roundBanner() {
   const first = S.round === 1;
   stageIntro(`<div class="round-start">
     <div class="rs-round">ラウンド ${S.round}</div>
-    <div class="rs-gate">ゲート <b>${gateFor(S.round)}</b> 点 ・ ${HANDS} 文まで</div>
+    <div class="rs-gate">ゲート <b>${gateFor(S.round)}</b> 点 ・ ${HANDS} 文まで ・ 拍は <b>${MORA_BUDGET}</b> まで</div>
     <div class="rs-tip">${
       first
-        ? `好きな文を打って <kbd>Enter</kbd>。いまは読みの音の数（拍）がそのまま点（1 文 ${BASE_CAP} 拍まで）。`
-        : `手持ちのカード ${S.owned.length} 枚。カードに乗せると説明が出る。`
+        ? `好きな文を打って <kbd>Enter</kbd>。いまは読みの音の数（拍）がそのまま点。1 ラウンドで使える拍は ${MORA_BUDGET} まで（上の「残りの拍」）なので、長い文は点が大きいぶん早くなくなる。`
+        : gateFor(S.round) > MORA_BUDGET
+          ? `拍だけでは ${MORA_BUDGET} 点まで。手持ちのカード ${S.owned.length} 枚に合う文で、1 拍あたりの点を上げる。`
+          : `手持ちのカード ${S.owned.length} 枚。カードに乗せると説明が出る。`
     }</div>
   </div>`);
   bump($("stage").firstElementChild, "enter");
@@ -122,9 +128,16 @@ async function submit(text: string): Promise<boolean> {
   S.phase = "busy";
   await animDone;
   setStatus("send", "");
-  const { keys, secs } = takeKeyStats();
   try {
     const morph = analyze(tokenizer, text);
+    const cost = budgetCost(morph);
+    if (cost > S.budgetLeft) {
+      // 入力欄でも止めているが、念のため（送らずに打てる状態へ戻す）
+      setStatus("send", `この文は ${cost} 拍で、残りの拍（${S.budgetLeft}）より長い。短くして送る。`);
+      S.phase = "play";
+      return false;
+    }
+    const { keys, secs } = takeKeyStats();
     const prev = S.played.length ? S.played[S.played.length - 1] : null;
     const bd = await scoreSentence(
       { text, morph, prev, past: S.played, roundPast: S.played.filter((p) => p.round === S.round), emb: emb.state === "ready" ? emb : null },
@@ -136,8 +149,9 @@ async function submit(text: string): Promise<boolean> {
     S.roundScore += bd.total;
     S.runTotal += bd.total;
     S.handsLeft--;
+    S.budgetLeft -= bd.cost;
     const gate = gateFor(S.round);
-    const outcome = S.roundScore >= gate ? "clear" : S.handsLeft <= 0 ? "over" : "continue";
+    const outcome = S.roundScore >= gate ? "clear" : S.handsLeft <= 0 || S.budgetLeft <= 0 ? "over" : "continue";
     S.phase = outcome === "continue" ? "play" : "ending";
     renderLog($("log"), S.played);
     const vs = verdicts(e, prev, S.owned);
@@ -148,7 +162,7 @@ async function submit(text: string): Promise<boolean> {
       !/[一-龯々ァ-ヶ]/.test(text) && [...text].length >= 6
         ? "ひらがなだけの文は解析が崩れやすい（区切りがずれて名詞や固有名詞が見えなくなる）。漢字に変換して送ると正しく読める。"
         : unk >= 2
-          ? `辞書に無い語が ${unk} つあった（赤い字）。読みが取れないので、拍の数に入らない。`
+          ? `辞書に無い語が ${unk} つあった（赤い字）。読みが取れないので基本点に入らない（英字・数字などは、拍の予算から 1 字 1 拍を引く）。`
           : "";
     const r = new Run();
     run = r;
@@ -177,7 +191,7 @@ function showNext(kind: "clear" | "over") {
   $("next").innerHTML =
     kind === "clear"
       ? `<div class="next clear"><span><b>ラウンド ${S.round} クリア</b> ${S.roundScore} / ${gate} 点</span><button id="next-btn" disabled>カードを選ぶ <kbd>Enter</kbd></button></div>`
-      : `<div class="next over"><span><b>ゲートに届かなかった</b> ${S.roundScore} / ${gate} 点</span><button id="next-btn" disabled>結果を見る <kbd>Enter</kbd></button></div>`;
+      : `<div class="next over"><span><b>ゲートに届かなかった</b> ${S.roundScore} / ${gate} 点（${S.budgetLeft <= 0 ? "拍を使い切った" : "文を使い切った"}）</span><button id="next-btn" disabled>結果を見る <kbd>Enter</kbd></button></div>`;
   const banner = $("next").firstElementChild!;
   bump(banner, "enter");
   if (kind === "clear") {
@@ -208,8 +222,9 @@ function clearRound() {
   // 3 枚を無作為に（引くのは毎回ちがってよい。点の計算は決定的）
   S.offers = drawOffers(eligibleCards()).map((c) => c.id);
   const used = HANDS - S.handsLeft;
+  const mora = MORA_BUDGET - S.budgetLeft;
   const head = `<div class="clear-head"><div class="ch-title">ラウンド ${S.round} クリア</div>
-    <div class="ch-stats"><span>${used} 文で <b>${S.roundScore}</b> 点（ゲート ${gateFor(S.round)}）</span><span>次のゲート <b>${gateFor(S.round + 1)}</b> 点</span></div></div>`;
+    <div class="ch-stats"><span>${used} 文・${mora} 拍で <b>${S.roundScore}</b> 点（ゲート ${gateFor(S.round)}${mora > 0 ? `、1 拍あたり ${(S.roundScore / mora).toFixed(1)} 点` : ""}）</span><span>次のゲート <b>${gateFor(S.round + 1)}</b> 点</span></div></div>`;
   if (!S.offers.length) {
     openOverlay(`${head}<p>取れるカードはもう無い。</p><div class="ov-actions"><button id="ov-next">次のラウンドへ</button></div>`, { closable: false, variant: "wide" });
     $("ov-next").addEventListener("click", () => pick(-1));
@@ -231,6 +246,7 @@ function pick(i: number) {
   S.roundScore = 0;
   shown = 0;
   S.handsLeft = HANDS;
+  S.budgetLeft = MORA_BUDGET;
   S.offers = [];
   S.phase = "play";
   $("next").innerHTML = "";
@@ -293,7 +309,7 @@ function showLog() {
 
 function resetRun() {
   skip();
-  Object.assign(S, { round: 1, owned: [], played: [], roundScore: 0, handsLeft: HANDS, offers: [], runTotal: 0 });
+  Object.assign(S, { round: 1, owned: [], played: [], roundScore: 0, handsLeft: HANDS, budgetLeft: MORA_BUDGET, offers: [], runTotal: 0 });
   shown = 0;
   lastVerdicts = [];
   $("hint").textContent = "";
@@ -317,7 +333,7 @@ function toTitle() {
   setInputEnabled(false);
   hud();
   stageIntro("");
-  showTitle({ best: Number(localStorage.getItem(BEST_KEY) ?? "0"), firstGate: gateFor(1), cap: BASE_CAP, onStart: start });
+  showTitle({ best: Number(localStorage.getItem(BEST_KEY) ?? "0"), firstGate: gateFor(1), onStart: start });
   setTitleReady(tokenizer ? "準備できた" : "辞書を読み込み中…（はじめても、読み込みが終われば送れる）");
 }
 
@@ -354,7 +370,11 @@ function init() {
     canSubmit: () => S.phase === "play",
     onSubmit: (t) => void submit(t),
     onSkip: skip,
-    liveMora: (t) => (tokenizer ? moraCount(analyze(tokenizer, t).reading) : null),
+    liveCost: (t) => (tokenizer ? budgetCost(analyze(tokenizer, t)) : null),
+    budgetLeft: () => S.budgetLeft,
+    onPreview: (c) => {
+      if (S.phase === "play" || S.phase === "busy") previewBudget(c);
+    },
   });
   onSettings(() => inp.updateLive());
   // 数え上げの表示を押すと最後まで飛ばす
@@ -405,6 +425,7 @@ function init() {
     animating: () => !!run,
     idle: () => animDone,
     ready: () => !!tokenizer,
+    cost: (t: string) => (tokenizer ? budgetCost(analyze(tokenizer, t)) : null),
     embState: () => emb.state,
     gateFor,
     settings: () => ({ ...settings }),

@@ -1,16 +1,17 @@
 // 画面全体を覆う場面（タイトル・ゲームオーバー）。重ねる枠（overlay.ts）の「screen」の型で出す。
 import "./screens.css";
 import { CARD_BY_ID } from "../cards";
-import { HANDS, OFFER_COUNT } from "../rules";
+import { HANDS, MORA_BUDGET, OFFER_COUNT } from "../rules";
 import { KIND_LABEL } from "./cards-view";
 import { $, esc } from "./dom";
 import { openOverlay } from "./overlay";
 
-export function showTitle(o: { best: number; firstGate: number; cap: number; onStart: () => void }) {
+export function showTitle(o: { best: number; firstGate: number; onStart: () => void }) {
   const steps = [
     ["お題は出ない", "打つ文は自分で決める。好きな日本語の文を打って <kbd>Enter</kbd>。ローマ字で打ち、漢字に変換してよい。"],
-    ["文が点になる", `はじめは、読みの音の数（拍）がそのまま点。1 文 ${o.cap} 拍まで。送るたびに、何で何点入ったかが出る。`],
-    ["ゲートを越える", `1 ラウンドに送れるのは ${HANDS} 文。合計がゲートの点に届けばクリア。最初のゲートは ${o.firstGate} 点。届かなければ終わり。`],
+    ["文が点になる", `はじめは、読みの音の数（拍）がそのまま点。送るたびに、何で何点入ったかが出る。`],
+    ["拍には限りがある", `1 ラウンドで使える拍は ${MORA_BUDGET} まで、送れる文は ${HANDS} 文まで。長い文は点が大きいぶん、拍を早く使い切る。1 拍あたりの点を上げるのがこつ。`],
+    ["ゲートを越える", `ラウンドの合計がゲートの点に届けばクリア。最初のゲートは ${o.firstGate} 点。拍か文を使い切って届かなければ終わり。`],
     ["カードでルールを足す", `クリアするたびに、得点のルールのカードを ${OFFER_COUNT} 枚から 1 枚選ぶ。カードに合う文を打つほど点が伸びる。`],
   ];
   openOverlay(

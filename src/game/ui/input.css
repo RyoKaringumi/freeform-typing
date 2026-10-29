@@ -38,8 +38,16 @@
 .inputwrap.deny #text { animation: ft-shake 300ms ease-in-out; border-color: var(--bad); }
 .inputwrap.disabled #text { opacity: 0.5; }
 
-/* 打っている途中の拍（設定で出す） */
+/* 打っている途中の文が使う拍（入力欄の上の縁に、変換中の札と反対の側に出す。打った字と重ならないように） */
 .live {
-  position: absolute; right: 7em; top: 50%; transform: translateY(-50%); color: var(--muted);
-  font-size: 0.85rem; font-variant-numeric: tabular-nums; pointer-events: none;
+  position: absolute; right: 7em; top: -0.8em; color: var(--muted); background: var(--panel); padding: 0 6px; border-radius: 4px;
+  font-size: 0.8rem; font-variant-numeric: tabular-nums; pointer-events: none; white-space: nowrap;
 }
+.live:empty { display: none; }
+/* 打っている途中の文が使う拍。残りより長いと赤くして送らない */
+.live b { color: var(--text-2); font-size: 0.95rem; }
+.live.over, .live.over b { color: var(--bad); }
+.live .lv-over { margin-left: 0.5em; font-weight: 700; }
+.inputwrap.over { --ring: var(--bad); }
+.inputwrap.over #text { border-color: var(--bad); }
+.live.shake { animation: ft-shake 300ms ease-in-out; }

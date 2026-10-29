@@ -1,6 +1,6 @@
 // 送った文に対する、カードごとの「効いた・あと少し・効かなかった」の判定（見せ方のためだけ。点は変えない）。
 // 「あと少し」は、少し直せば効いた／もっと効いた、が分かる場合だけ出す（十七音の拍の差、しりとりの濁点違い など）。
-import { BASE_CAP, CARD_BY_ID, LONG_CAP, TUNING, type CardDef, type Line } from "../cards";
+import { CARD_BY_ID, TUNING, type CardDef, type Line } from "../cards";
 import { lastKana, shiritori } from "../../kana";
 import type { Entry } from "./breakdown";
 import { fmtMult } from "./dom";
@@ -33,6 +33,10 @@ function nearFor(l: Line, e: Entry, prev: Entry | null): { tip: string } | null 
     const d = TUNING.haiku.mora - e.bd.mora;
     if (Math.abs(d) <= 3) return { tip: d > 0 ? `あと ${d} 拍で ${TUNING.haiku.mora} 拍` : `${-d} 拍多い（${TUNING.haiku.mora} 拍で効く）` };
   }
+  if (id === "long" && !hit) {
+    const d = TUNING.long.mora - e.bd.mora;
+    if (d <= 3) return { tip: `あと ${d} 拍で ${TUNING.long.mora} 拍` };
+  }
   if (id === "pos" && !hit) {
     const kinds = new Set(e.morph.tokens.map((t) => t.pos).filter((p) => p && !POS_SKIP.has(p)));
     if (kinds.size === TUNING.pos.over) {
@@ -58,16 +62,6 @@ export function verdicts(e: Entry, prev: Entry | null, owned: string[]): Verdict
   for (const id of owned) {
     const card = CARD_BY_ID.get(id);
     if (!card) continue;
-    if (id === "long") {
-      const used = e.bd.mora > BASE_CAP;
-      out.push({
-        card,
-        state: used ? "hit" : "miss",
-        value: used ? `＋${Math.min(e.bd.mora, LONG_CAP) - BASE_CAP}` : "—",
-        why: used ? `${e.bd.mora} 拍。上限 ${BASE_CAP} を超えた分も点になった` : `${e.bd.mora} 拍（${BASE_CAP} 拍以下なので使わなかった）`,
-      });
-      continue;
-    }
     const l = lines.get(id);
     if (!l) continue;
     const near = nearFor(l, e, prev);

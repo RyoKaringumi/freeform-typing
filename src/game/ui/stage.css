@@ -96,3 +96,6 @@
 @media (max-height: 720px) {
   .sb-cell b { font-size: calc(var(--fs-score) * 0.85); }
 }
+/* 1 文の点の式の後ろの「何拍・1 拍あたり何点」 */
+.st-formula .per-mora, .bd-total .per-mora { margin-left: 0.8em; color: var(--text-2); font-size: 0.8rem; white-space: nowrap; }
+.st-formula .per-mora b, .bd-total .per-mora b { font-size: 1rem; color: var(--gold); }

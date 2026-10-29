@@ -1,6 +1,7 @@
 // 得点のルール（カード）と、1 文の点の計算。
-// 点 = 基本点（チップ）× 倍率。基本点 = 読みの拍の数（上限あり）＋「点」のカード、
+// 点 = 基本点（チップ）× 倍率。基本点 = 読みの拍の数＋「点」のカード、
 // 倍率 = 1 ＋「倍率＋」のカード、そのあと「倍率×」のカードを掛ける。
+// 1 ラウンドに使える拍には予算がある（rules.ts の MORA_BUDGET）。長い文は点が大きいぶん予算を早く使う。
 // カードの数値はすべて下の TUNING にまとめてある（説明の文もここから作る）。釣り合いの集計は tools/sim/。
 import type { MorphResult } from "../morph";
 import { firstKana, kanaOnly, lastKana } from "../kana";
@@ -42,12 +43,11 @@ export type CardDef = {
 
 /** カードの数値。変えると点が変わる（tools/sim で集計し直す）。 */
 export const TUNING = {
-  baseCap: 30,
-  longCap: 60, // 50 → 60（長く打つことに報いる。集計で寄与が小さかった）
+  long: { mora: 40, x: 1.5 }, // 前は「1 文の拍の上限 30 → 60」。上限をラウンドの拍の予算に替えたので、長い文に倍率を付けるカードにした（×2 だと長い文で狙う打ち方が一番強くなった）
   proper: { per: 1, max: 3 },
   nouns: { per: 4 },
-  pos: { over: 3, per: 0.5 }, // 4 超え×1 → 3 超え×0.5（ふつうの文でも少し効き、狙うと伸びる）
-  verbs: { per: 0.4 }, // 0.5 → 0.4（ふつうの文で一番強かった）
+  pos: { over: 3, per: 0.5, max: 2 }, // 4 超え×1 → 3 超え×0.5（ふつうの文でも少し効き、狙うと伸びる）。2 種分まで（長い文ほど種類が増えるため）
+  verbs: { per: 0.4, max: 3 }, // 0.5 → 0.4（ふつうの文で一番強かった）。3 つまで（長い文に動詞を並べると、点と倍率の両方が長さで伸びるため）
   katakana: { per: 10 }, // 8 → 10
   shiritori: { x: 2 },
   haiku: { mora: 17, x: 3 },
@@ -65,8 +65,17 @@ export function moraCount(reading: string): number {
   return n;
 }
 
-export const BASE_CAP = T.baseCap;
-export const LONG_CAP = T.longCap;
+const KANA = /[ぁ-ゖァ-ヶー]/;
+/**
+ * ラウンドの拍の予算から引く量。読みの拍に、読みの取れない語（英字・数字・辞書に無い漢字など。記号と空白は除く）の
+ * 仮名でない字の数を足す。読みの取れない語は基本点に入らないが、予算を使わずに名詞を並べられないようにするため。
+ */
+export function budgetCost(morph: MorphResult): number {
+  let n = moraCount(morph.reading);
+  for (const t of morph.tokens) if (!t.reading && t.pos !== "記号") n += [...t.surface].filter((ch) => !KANA.test(ch)).length;
+  return n;
+}
+
 const r1 = (x: number) => Math.round(x * 10) / 10;
 const list = (xs: string[]) => (xs.length ? xs.join("・") : "なし");
 const POS_SKIP = new Set(["記号", "フィラー", "その他"]);
@@ -102,12 +111,12 @@ export const CARDS: CardDef[] = [
     name: "品詞のパレット",
     source: "形態素",
     kind: "mult",
-    short: `品詞の種類が ${T.pos.over} を超えた分、1 種につき 倍率＋${T.pos.per}`,
-    long: `文に出てくる品詞の種類（名詞・動詞・形容詞・副詞・助詞・助動詞・連体詞・接続詞・感動詞・接頭詞。記号とフィラーは数えない）を数え、${T.pos.over} 種を超えた分だけ倍率を足す。例: 名詞・助詞・動詞・助動詞・形容詞・副詞 の 6 種 → 倍率＋${r1((6 - T.pos.over) * T.pos.per)}。`,
+    short: `品詞の種類が ${T.pos.over} を超えた分、1 種につき 倍率＋${T.pos.per}（${T.pos.max} 種分まで）`,
+    long: `文に出てくる品詞の種類（名詞・動詞・形容詞・副詞・助詞・助動詞・連体詞・接続詞・感動詞・接頭詞。記号とフィラーは数えない）を数え、${T.pos.over} 種を超えた分だけ倍率を足す。上限は ${T.pos.max} 種分（${T.pos.over + T.pos.max} 種で頭打ち）。例: 名詞・助詞・動詞・形容詞・副詞 の 5 種 → 倍率＋${r1(Math.min(T.pos.max, 5 - T.pos.over) * T.pos.per)}。`,
     eval: (c) => {
       const kinds = [...new Set(c.morph.tokens.map((t) => t.pos).filter((p) => p && !POS_SKIP.has(p)))];
-      const n = Math.max(0, kinds.length - T.pos.over);
-      return { amount: r1(n * T.pos.per), hit: n > 0, detail: `品詞 ${kinds.length} 種（${list(kinds)}）− ${T.pos.over}` };
+      const n = Math.min(T.pos.max, Math.max(0, kinds.length - T.pos.over));
+      return { amount: r1(n * T.pos.per), hit: n > 0, detail: `品詞 ${kinds.length} 種（${list(kinds)}）− ${T.pos.over}${kinds.length - T.pos.over > n ? `（${n} 種分まで）` : ""}` };
     },
   },
   {
@@ -115,11 +124,12 @@ export const CARDS: CardDef[] = [
     name: "動詞の連鎖",
     source: "形態素",
     kind: "mult",
-    short: `動詞 1 つにつき 倍率＋${T.verbs.per}`,
-    long: `「動詞・自立」の語を数える（「〜ている」の「いる」のような非自立は数えない）。1 つにつき倍率＋${T.verbs.per}。例: 「走って跳んで笑った」→ 走る・跳ぶ・笑う で倍率＋${r1(3 * T.verbs.per)}。`,
+    short: `動詞 1 つにつき 倍率＋${T.verbs.per}（${T.verbs.max} つまで）`,
+    long: `「動詞・自立」の語を数える（「〜ている」の「いる」のような非自立は数えない）。1 つにつき倍率＋${T.verbs.per}、上限は ${T.verbs.max} つ分。例: 「走って跳んで笑った」→ 走る・跳ぶ・笑う で倍率＋${r1(3 * T.verbs.per)}。`,
     eval: (c) => {
       const vs = c.morph.tokens.filter((t) => t.pos === "動詞" && t.pos1 === "自立").map((t) => t.base || t.surface);
-      return { amount: r1(vs.length * T.verbs.per), hit: vs.length > 0, detail: `動詞 ${vs.length}（${list(vs)}）× ${T.verbs.per}` };
+      const n = Math.min(T.verbs.max, vs.length);
+      return { amount: r1(n * T.verbs.per), hit: n > 0, detail: `動詞 ${vs.length}（${list(vs)}）${vs.length > n ? `→ ${n} まで` : ""}× ${T.verbs.per}` };
     },
   },
   {
@@ -138,9 +148,10 @@ export const CARDS: CardDef[] = [
     id: "long",
     name: "長文の心得",
     source: "形態素",
-    kind: "rule",
-    short: `基本点の上限を ${T.baseCap} 拍 → ${T.longCap} 拍に上げる`,
-    long: `ふだん基本点（読みの拍の数）は ${T.baseCap} で頭打ちになる。このカードがあると上限が ${T.longCap} になり、長い文がそのまま点になる。`,
+    kind: "xmult",
+    short: `読みが ${T.long.mora} 拍以上の文は 倍率×${T.long.x}`,
+    long: `読みの拍の数が ${T.long.mora} 以上なら倍率×${T.long.x}。長い文はラウンドの拍の予算を早く使うので、短い文を何本も打つか、長い文で一気に稼ぐかを選ぶことになる。例: 予算 100 拍なら、${T.long.mora} 拍の文は 2 本まで。`,
+    eval: (c) => ({ amount: c.mora >= T.long.mora ? T.long.x : 1, hit: c.mora >= T.long.mora, detail: `読み ${c.mora} 拍` }),
   },
   {
     id: "shiritori",
@@ -217,10 +228,14 @@ export const CARDS: CardDef[] = [
 
 export const CARD_BY_ID = new Map(CARDS.map((c) => [c.id, c]));
 
+/** 1 拍あたりの点（予算から引いた拍で割る。拍を使わない文は null） */
+export const perMora = (b: { total: number; cost: number }) => (b.cost > 0 ? Math.round((b.total / b.cost) * 10) / 10 : null);
+
 export type Line = { card: CardDef; result: CardResult };
 export type Breakdown = {
   mora: number;
-  cap: number;
+  /** ラウンドの拍の予算から引く量（budgetCost） */
+  cost: number;
   base: number;
   chipLines: Line[];
   multLines: Line[];
@@ -236,8 +251,7 @@ export async function scoreSentence(ctx: Omit<Ctx, "mora">, owned: string[]): Pr
   const mora = moraCount(ctx.morph.reading);
   const c: Ctx = { ...ctx, mora };
   const cards = owned.map((id) => CARD_BY_ID.get(id)!).filter(Boolean);
-  const cap = cards.some((k) => k.id === "long") ? T.longCap : T.baseCap;
-  const base = Math.min(mora, cap);
+  const base = mora;
   const run = async (kind: CardKind) => {
     const out: Line[] = [];
     for (const card of cards.filter((k) => k.kind === kind && k.eval)) out.push({ card, result: await card.eval!(c) });
@@ -251,5 +265,5 @@ export async function scoreSentence(ctx: Omit<Ctx, "mora">, owned: string[]): Pr
   const xmult = xLines.reduce((a, l) => a * l.result.amount, 1);
   const duplicate = ctx.past.some((p) => p.text.trim() === ctx.text.trim());
   const total = duplicate ? 0 : Math.round(chips * mult * xmult);
-  return { mora, cap, base, chipLines, multLines, xLines, chips, mult, xmult, total, duplicate };
+  return { mora, cost: budgetCost(ctx.morph), base, chipLines, multLines, xLines, chips, mult, xmult, total, duplicate };
 }

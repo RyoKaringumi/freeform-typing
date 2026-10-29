@@ -1,6 +1,6 @@
 // カードの「何をすると得か」の一文と、効きを示す例文。画面の文言なので ui/ に置く（点の計算は cards.ts のまま）。
 // 例文の効き方は決め打ちで書かず、その場で cards.ts のカードの関数に通して出す（runExample）。数値を変えても例がずれない。
-import { BASE_CAP, CARD_BY_ID, LONG_CAP, moraCount, TUNING, type CardDef, type CardResult, type Ctx, type Played } from "../cards";
+import { CARD_BY_ID, moraCount, TUNING, type CardDef, type CardResult, type Ctx, type Played } from "../cards";
 import type { MorphResult } from "../../morph";
 import type { Embedder } from "../distance";
 
@@ -20,7 +20,7 @@ export const GUIDE: Record<string, Guide> = {
   verbs: { goal: "動詞をたくさん使う", example: "走って跳んで笑った" },
   katakana: { goal: "カタカナの名詞を入れる", example: "コーヒーとケーキを頼んだ" },
   long: {
-    goal: `${BASE_CAP} 拍を超える長い文も点になる`,
+    goal: `${TUNING.long.mora} 拍以上の長い文で一気に稼ぐ`,
     example: "週末は友達と電車に乗って海の近くの小さな町へ出かけて、夕方まで散歩をしながら写真をたくさん撮った",
   },
   shiritori: { goal: "前の文の最後の音から始める", example: "猫がこたつで丸くなった", before: ["庭で遊ぶのは楽しいね"] },
@@ -56,12 +56,8 @@ export function runExample(card: CardDef): Promise<ExampleOut> {
     const mora = moraCount(morph.reading);
     const before: Played[] = (g.before ?? []).map((t) => ({ text: t, morph: e.analyze(t), total: 0 }));
     const ctx: Ctx = { text: g.example, morph, mora, prev: before.at(-1) ?? null, past: before, roundPast: before, emb: embedder };
-    let result: CardResult;
-    if (card.eval) result = await card.eval(ctx);
-    else if (card.id === "long") {
-      const extra = Math.min(mora, LONG_CAP) - Math.min(mora, BASE_CAP);
-      result = { amount: extra, hit: extra > 0, detail: `読み ${mora} 拍（ふだんは ${BASE_CAP} で頭打ち）` };
-    } else return null;
+    if (!card.eval) return null;
+    const result: CardResult = await card.eval(ctx);
     return { text: g.example, before: g.before ?? [], result };
   })().catch(() => null);
   cache.set(key, p);

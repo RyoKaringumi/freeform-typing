@@ -1,6 +1,6 @@
 /* 上の帯と手持ちのカードの列 */
 .hud {
-  display: grid; grid-template-columns: auto auto minmax(8em, 1fr) auto auto auto; gap: calc(var(--gap) * 1.4); align-items: center;
+  display: grid; grid-template-columns: auto auto minmax(8em, 1.3fr) minmax(7em, 1fr) auto auto auto; gap: calc(var(--gap) * 1.4); align-items: center;
   padding: 0.35em 0.9em; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-lg);
 }
 .hud-title { font-weight: 800; letter-spacing: 0.03em; line-height: 1.05; font-size: 0.95rem; color: var(--text-2); }
@@ -21,6 +21,20 @@
 .gate-text .of { color: var(--muted); font-size: 1.05rem; }
 .gate-text .left { margin-left: 0.6em; color: var(--text-2); font-size: var(--fs-small); }
 .gate-text .left.ok { color: var(--good-2); font-weight: 700; }
+/* 残りの拍の棒: 残り（keep）と、打っている文が使う分（use、縞）を並べる */
+.hud-budget { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.budget-text b { font-size: 1.25rem; }
+.budget-text .of { font-size: 0.9rem; }
+.budget-text .use { margin-left: 0.5em; color: var(--text-2); font-size: var(--fs-small); }
+.budget-text .use.bad { color: var(--bad, #ff6b6b); font-weight: 700; }
+.budget-bar { position: relative; height: 0.7rem; background: var(--panel-3); border-radius: 99px; overflow: hidden; box-shadow: inset 0 1px 3px #0008; }
+#budget-keep { position: absolute; left: 0; top: 0; bottom: 0; width: 100%; background: linear-gradient(90deg, var(--gold), #f3d27a); transition: width var(--t-mid) ease-out; }
+#budget-use {
+  position: absolute; top: 0; bottom: 0; width: 0;
+  background: repeating-linear-gradient(135deg, #f3d27acc 0 5px, #f3d27a44 5px 10px); transition: left var(--t-fast, 120ms), width var(--t-fast, 120ms);
+}
+.hud-budget.low #budget-keep { background: linear-gradient(90deg, #e08a3c, var(--gold)); }
+.hud-budget.over #budget-use { background: repeating-linear-gradient(135deg, #ff6b6bdd 0 5px, #ff6b6b55 5px 10px); }
 .hud-hands { display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .dots { display: flex; gap: 0.3em; }
 .hands-n { display: none; }
@@ -37,11 +51,20 @@
 .deck .empty b { display: block; color: var(--muted); }
 
 @media (max-aspect-ratio: 1/1), (max-width: 820px) {
-  .hud { grid-template-columns: auto minmax(0, 1fr) auto auto; grid-template-areas: "round gate hands total" "title title btns btns"; row-gap: 4px; }
+  .hud { grid-template-columns: auto minmax(0, 1fr) auto auto; grid-template-areas: "round gate hands total" "budget budget budget budget" "title title btns btns"; row-gap: 4px; }
+  .hud-budget { grid-area: budget; }
   .hud-title { grid-area: title; } .hud-round { grid-area: round; } .hud-gate { grid-area: gate; } .hud-hands { grid-area: hands; }
   .hud-total { grid-area: total; } .hud-btns { grid-area: btns; justify-content: flex-end; }
   .hud-br { display: none; }
   .deck-wrap { max-height: 30vh; }
   .deck { flex-direction: row; flex-wrap: wrap; }
   .deck .deck-card { flex: 1 1 14em; }
+}
+
+/* 狭い画面では、残りの文を点の列ではなく数で出す（7 つの点が帯を押し広げないように） */
+@media (max-width: 520px) {
+  .hud-hands .dots { display: none; }
+  .hands-n { display: block; font-size: 1.5rem; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  /* 「ゲートまで」が 1 字ずつ縦に折れるので、狭い画面では札を出さない（点と棒だけで分かる） */
+  .hud-gate .gate-top .lbl { display: none; }
 }

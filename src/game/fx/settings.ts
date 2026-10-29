@@ -5,11 +5,10 @@ export type Settings = {
   volume: number; // 0〜1
   motion: MotionPref; // auto は OS の「視差効果を減らす」（prefers-reduced-motion）に従う
   speed: "normal" | "fast"; // 点の数え上げの速さ
-  liveMora: boolean; // 打っている途中の文の拍を入力欄の横に出す
 };
 
 const KEY = "freeform-typing.settings.v1";
-const DEFAULTS: Settings = { sound: true, volume: 0.6, motion: "auto", speed: "normal", liveMora: false };
+const DEFAULTS: Settings = { sound: true, volume: 0.6, motion: "auto", speed: "normal" };
 
 function load(): Settings {
   try {

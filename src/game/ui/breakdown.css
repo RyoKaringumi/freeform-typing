@@ -43,3 +43,4 @@ table.lines { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
 @media (max-height: 760px) {
   .side .log { display: none; }
 }
+.log-s small { margin-left: 0.5em; color: var(--muted); font-size: 0.75em; }

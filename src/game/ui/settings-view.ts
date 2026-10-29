@@ -1,4 +1,4 @@
-// 設定の画面（音の on/off・音量・演出・数え上げの速さ・打っている途中の拍）。
+// 設定の画面（音の on/off・音量・演出・数え上げの速さ）。
 import { sfx, unlockAudio } from "../fx/audio";
 import { settings, updateSettings, type MotionPref } from "../fx/settings";
 import { $ } from "./dom";
@@ -21,9 +21,6 @@ export function showSettings(onDone: () => void) {
         ${m("auto", `おまかせ（OS の設定に従う。いまは${osReduced() ? "減らす" : "ふつう"}）`)}${m("full", "ふつう")}${m("reduced", "減らす（動きを止め、点はすぐに出す）")}
       </div>
       <div class="set-row"><span class="set-name">数え上げ</span>${sp("normal", "ふつう")}${sp("fast", "速い")}</div>
-      <div class="set-row"><span class="set-name">打っている文</span>
-        <label class="opt"><input type="checkbox" id="set-live" ${settings.liveMora ? "checked" : ""}/> 拍の数を入力欄に出す（送る前に十七音などを数えられる）</label>
-      </div>
       <p class="note">数え上げの途中でも次の文を打てる。空のまま Enter を押すか、点の表示を押すと最後まで飛ばす。</p>
     </div>
     <div class="ov-actions"><button id="ov-close">閉じる</button></div>`,
@@ -45,7 +42,6 @@ export function showSettings(onDone: () => void) {
   });
   document.querySelectorAll<HTMLInputElement>('input[name="motion"]').forEach((r) => r.addEventListener("change", () => updateSettings({ motion: r.value as MotionPref })));
   document.querySelectorAll<HTMLInputElement>('input[name="speed"]').forEach((r) => r.addEventListener("change", () => updateSettings({ speed: r.value as "normal" | "fast" })));
-  $("set-live").addEventListener("change", (ev) => updateSettings({ liveMora: (ev.target as HTMLInputElement).checked }));
   $("ov-close").addEventListener("click", closeOverlay);
   $("ov-close").focus();
 }
