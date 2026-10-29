@@ -1,0 +1,61 @@
+/*
+  見た目の変数。色・字・角の丸み・動きの長さはここだけで変えられる。
+  部品ごとの CSS（hud.css・stage.css・input.css・cards.css・overlay.css・breakdown.css・fx.css）は、この変数だけを使う。
+*/
+:root {
+  /* 地と文字 */
+  --bg: #14121c;
+  --bg-glow: #241d3d;
+  --panel: #1f1c2b;
+  --panel-2: #272339;
+  --panel-3: #2f2a45;
+  --line: #3a3552;
+  --text: #ece9f5;
+  --text-2: #cfc9e8;
+  --muted: #9a94b0;
+  --faint: #6e6888;
+
+  /* 役目の色 */
+  --accent: #8a7cff;
+  --accent-2: #b06cff;
+  --button: #4b3fa6;
+  --button-hover: #5e51c4;
+  --good: #45d483;
+  --good-2: #b6f06c;
+  --bad: #ff5a6e;
+  --warn: #ffcf70;
+  --gold: #ffd34a;
+
+  /* カードの種類の色（Balatro の チップ＝青・倍率＝赤 にならう） */
+  --chips: #3d9bff;
+  --mult: #ff4d6a;
+  --xmult: #ffb020;
+  --rule: #6fd38f;
+  --emb: #c8a8ff;
+
+  /* 字 */
+  --font-ui: system-ui, "Hiragino Sans", "Yu Gothic UI", "Meiryo", sans-serif;
+  --font-type: "BIZ UDGothic", "Hiragino Sans", "Yu Gothic UI", "Meiryo", sans-serif;
+  --fs-base: 15px;
+  --fs-input: 1.5rem;
+  --fs-stage: 1.35rem;
+  --fs-score: 2rem;
+
+  /* 形 */
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --shadow: 0 6px 24px #0008;
+  --page-width: 980px;
+
+  /* 動きの長さ（演出を減らす設定では 0 になる） */
+  --t-fast: 120ms;
+  --t-mid: 260ms;
+  --t-slow: 520ms;
+}
+
+.reduce-motion {
+  --t-fast: 0ms;
+  --t-mid: 0ms;
+  --t-slow: 0ms;
+}

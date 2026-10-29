@@ -1,0 +1,35 @@
+/* 内訳の表・解析の区切り・これまでの文の一覧 */
+.tokens { display: flex; flex-wrap: wrap; gap: 3px; margin: 10px 0 4px; }
+.tok { display: inline-flex; flex-direction: column; align-items: center; background: var(--panel-3); border-radius: 4px; padding: 2px 6px; }
+.tok .s { font-size: 0.95rem; }
+.tok .p { font-size: 0.62rem; color: var(--muted); }
+.tok.n { background: #233653; }
+.tok.v { background: #4a2a35; }
+.tok.a, .tok.d { background: #3d3a22; }
+.tok.proper { background: #5a4a10; outline: 1px solid var(--gold); }
+.tok.unk .s { color: #ff8a8a; }
+.reading { color: var(--muted); font-size: 0.8rem; margin-bottom: 4px; }
+.speed { color: var(--faint); }
+
+.bd { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-md); padding: 12px 16px; }
+.bd-head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; flex-wrap: wrap; }
+.bd-text { font-size: 1.1rem; font-weight: 600; }
+.bd-total { font-size: 1rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.bd-total b { font-size: 1.4rem; color: #fff; }
+table.lines { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.lines td { padding: 3px 6px; border-bottom: 1px solid var(--panel-3); }
+.lines td.n { white-space: nowrap; width: 9em; }
+.lines td.d { color: var(--muted); }
+.lines td.v { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; width: 6em; font-weight: 600; }
+.lines tr.miss td { opacity: 0.45; }
+.lines tr.sec td { color: var(--muted); font-size: 0.75rem; padding-top: 8px; border-bottom: 0; }
+.lines tr.sum td { border-top: 1px solid var(--line); font-weight: 700; }
+
+.log { margin-top: 18px; }
+.log-title { color: var(--muted); font-size: 0.8rem; margin-bottom: 4px; }
+.log-round { color: var(--muted); font-size: 0.75rem; margin: 12px 0 4px; }
+.log-e { background: #1b1825; border-radius: var(--r-sm); margin: 3px 0; }
+.log-e summary { display: flex; justify-content: space-between; gap: 12px; padding: 6px 10px; cursor: pointer; list-style: none; }
+.log-e summary::-webkit-details-marker { display: none; }
+.log-s { font-variant-numeric: tabular-nums; color: var(--text-2); white-space: nowrap; }
+.log-e .bd { margin: 0 0 6px; }

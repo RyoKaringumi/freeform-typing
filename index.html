@@ -7,33 +7,47 @@
     <title>freeform typing（試作版）</title>
   </head>
   <body>
-    <header class="top">
-      <div class="title">freeform typing <span class="tag">試作版</span></div>
-      <div class="round">ラウンド <b id="round">1</b></div>
-      <div class="gate">
-        <div class="bar"><div id="bar-fill"></div></div>
-        <div id="gate-text" class="gate-text"></div>
-      </div>
-      <div class="hands" id="hands" title="このラウンドで送れる残りの文"></div>
-    </header>
+    <div class="app">
+      <header class="hud">
+        <div class="hud-title">freeform typing <span class="tag">試作版</span></div>
+        <div class="hud-round"><span class="lbl">ラウンド</span><b id="round">1</b></div>
+        <div class="hud-gate" id="gate">
+          <div class="gate-bar"><div id="bar-fill"></div></div>
+          <div id="gate-text" class="gate-text"></div>
+        </div>
+        <div class="hud-hands" id="hands" title="このラウンドで送れる残りの文"></div>
+        <button id="btn-settings" class="ghost small" title="音・演出の設定">設定</button>
+      </header>
 
-    <section class="deck-wrap">
-      <div class="deck-label">手持ちのルール</div>
-      <div id="deck" class="deck"></div>
-    </section>
+      <section class="deck-wrap">
+        <div class="deck-label">手持ちのルール</div>
+        <div id="deck" class="deck"></div>
+      </section>
 
-    <main>
-      <div class="inputwrap">
-        <input id="text" placeholder="好きな日本語の文を打って Enter（漢字に変換してよい）" autocomplete="off" spellcheck="false" />
-        <button id="send">送る</button>
-      </div>
-      <div id="hint" class="hint"></div>
-      <div id="next"></div>
-      <div id="last" class="last"></div>
-      <div id="log" class="log"></div>
-    </main>
+      <main class="play">
+        <section id="stage" class="stage" aria-live="polite"></section>
 
-    <div id="overlay" class="overlay hidden"><div id="overlay-body" class="overlay-body"></div></div>
+        <section id="scorebox" class="scorebox" title="押すと数え上げを飛ばす">
+          <div class="sb-cell sb-chips"><span class="sb-lbl">基本点</span><b id="sb-chips">0</b></div>
+          <span class="sb-op">×</span>
+          <div class="sb-cell sb-mult"><span class="sb-lbl">倍率</span><b id="sb-mult">1</b></div>
+          <span class="sb-op">=</span>
+          <div class="sb-cell sb-total"><span class="sb-lbl">この文</span><b id="sb-total">—</b></div>
+        </section>
+
+        <div class="inputwrap" id="inputwrap">
+          <input id="text" placeholder="好きな日本語の文を打って Enter（漢字に変換してよい）" autocomplete="off" spellcheck="false" />
+          <span class="ime-badge" aria-hidden="true">変換中</span>
+          <span id="live" class="live"></span>
+          <button id="send">送る</button>
+        </div>
+        <div id="hint" class="hint"></div>
+        <div id="next"></div>
+        <section id="log" class="log"></section>
+      </main>
+    </div>
+
+    <div id="overlay" class="overlay hidden"><div id="overlay-body" class="overlay-body" role="dialog" aria-modal="true"></div></div>
 
     <footer>
       <span id="status" class="status"></span>

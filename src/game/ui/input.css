@@ -1,0 +1,45 @@
+/* 入力欄（打鍵・変換中・確定・送る の反応） */
+.inputwrap {
+  position: relative; display: flex; gap: 8px; align-items: stretch; margin-top: 10px;
+  --ring: var(--button);
+}
+#text {
+  flex: 1; min-width: 0; font-family: var(--font-type); font-size: var(--fs-input); padding: 12px 14px;
+  background: #0f0e15; color: #fff; border: 2px solid var(--ring); border-radius: var(--r-md); outline: none;
+  transition: border-color var(--t-fast), box-shadow var(--t-fast); caret-color: var(--accent);
+}
+.inputwrap.focus { --ring: var(--accent); }
+.inputwrap.focus #text { box-shadow: 0 0 0 3px #8a7cff33; }
+#send { font-size: 1rem; padding: 0 22px; border-radius: var(--r-md); }
+
+/* 打鍵ごとの小さな反応 */
+@keyframes ft-tap { 0% { box-shadow: 0 0 0 3px #8a7cff55, 0 0 14px #8a7cff55; } 100% { box-shadow: 0 0 0 3px #8a7cff22; } }
+@keyframes ft-nudge { 0% { transform: translateY(0); } 40% { transform: translateY(1px); } 100% { transform: none; } }
+.inputwrap.tap #text { animation: ft-tap 160ms ease-out, ft-nudge 90ms ease-out; }
+@keyframes ft-del { 0% { box-shadow: 0 0 0 3px #ff5a6e44; } 100% { box-shadow: 0 0 0 3px transparent; } }
+.inputwrap.del #text { animation: ft-del 180ms ease-out; }
+
+/* IME の変換中 */
+.ime-badge {
+  position: absolute; top: -9px; left: 14px; font-size: 0.7rem; font-weight: 700; padding: 1px 7px; border-radius: 4px;
+  background: var(--warn); color: #222; opacity: 0; transform: translateY(4px); transition: opacity var(--t-fast), transform var(--t-fast);
+  pointer-events: none;
+}
+.inputwrap.composing { --ring: var(--warn); }
+.inputwrap.composing .ime-badge { opacity: 1; transform: none; }
+.inputwrap.composing #text { background: #16140f; }
+/* 確定 */
+@keyframes ft-confirm { 0% { box-shadow: 0 0 0 3px #45d48388, 0 0 18px #45d48366; border-color: var(--good); } 100% { box-shadow: 0 0 0 3px #8a7cff22; } }
+.inputwrap.confirm #text { animation: ft-confirm 320ms ease-out; }
+/* 送った */
+@keyframes ft-sent { 0% { transform: scale(0.985); box-shadow: 0 0 0 4px #b06cff88, 0 0 30px #b06cff66; } 100% { transform: none; box-shadow: 0 0 0 3px #8a7cff22; } }
+.inputwrap.sent #text { animation: ft-sent 300ms ease-out; }
+/* 送れない（ラウンドの終わりの数え上げ中など） */
+.inputwrap.deny #text { animation: ft-shake 300ms ease-in-out; border-color: var(--bad); }
+.inputwrap.disabled #text { opacity: 0.5; }
+
+/* 打っている途中の拍（設定で出す） */
+.live {
+  position: absolute; right: 110px; top: 50%; transform: translateY(-50%); color: var(--muted);
+  font-size: 0.85rem; font-variant-numeric: tabular-nums; pointer-events: none;
+}

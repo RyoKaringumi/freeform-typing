@@ -1,0 +1,48 @@
+/* カード（手持ちの列の小さなもの・選ぶ画面の大きなもの・説明） */
+.k-chips { --c: var(--chips); }
+.k-mult { --c: var(--mult); }
+.k-xmult { --c: var(--xmult); }
+.k-rule { --c: var(--rule); }
+
+.card.mini {
+  display: inline-flex; align-items: center; gap: 6px; background: var(--panel); border: 1px solid var(--line);
+  border-left: 4px solid var(--c); padding: 5px 10px; font-size: 0.85rem; color: var(--text); border-radius: var(--r-sm);
+}
+.card.mini:hover { background: var(--panel-3); }
+.mini-kind { font-size: 0.65rem; font-weight: 700; color: var(--c); }
+/* 数え上げで効いたとき */
+@keyframes ft-fire {
+  0% { transform: translateY(0) scale(1); box-shadow: 0 0 0 0 var(--c); }
+  30% { transform: translateY(-6px) scale(1.1); box-shadow: 0 0 18px 2px var(--c); background: var(--panel-3); }
+  100% { transform: none; box-shadow: 0 0 0 0 transparent; }
+}
+.card.mini.fire { animation: ft-fire 480ms ease-out; }
+@keyframes ft-arrive { 0% { transform: translateY(-30px) scale(1.4); opacity: 0; } 60% { transform: translateY(2px) scale(0.96); opacity: 1; } 100% { transform: none; } }
+.card.mini.arrive { animation: ft-arrive var(--t-slow) cubic-bezier(0.2, 1.4, 0.4, 1); box-shadow: 0 0 0 1px var(--gold); }
+
+.kind { font-size: 0.7rem; font-weight: 700; color: #111; background: var(--c); border-radius: 3px; padding: 1px 6px; }
+.src { font-size: 0.7rem; border: 1px solid var(--line); border-radius: 3px; padding: 0 5px; color: var(--muted); }
+.src.emb { color: var(--emb); border-color: #6b4fa8; }
+.new { font-size: 0.7rem; font-weight: 700; color: var(--gold); margin-left: auto; letter-spacing: 0.05em; }
+
+.offers { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin: 14px 0; perspective: 900px; }
+@keyframes ft-deal { from { transform: translateY(40px) rotateX(35deg); opacity: 0; } to { transform: none; opacity: 1; } }
+.card.offer {
+  position: relative; background: linear-gradient(180deg, var(--panel-2), var(--panel)); border: 1px solid var(--line);
+  border-top: 5px solid var(--c); border-radius: var(--r-md); padding: 14px; display: flex; flex-direction: column; gap: 8px;
+  animation: ft-deal var(--t-slow) cubic-bezier(0.2, 1.2, 0.4, 1) both; animation-delay: calc(var(--i) * 90ms);
+  transition: transform var(--t-fast), box-shadow var(--t-fast), opacity var(--t-mid);
+}
+.card.offer:hover, .card.offer:focus-within { transform: translateY(-6px); box-shadow: 0 10px 28px #000a, 0 0 0 1px var(--c); }
+.card.offer.chosen { transform: translateY(-12px) scale(1.05); box-shadow: 0 0 36px var(--c), 0 0 0 2px var(--c); }
+.card.offer.dismissed { opacity: 0.25; transform: scale(0.96); }
+.card-head { display: flex; gap: 6px; align-items: center; }
+.card-name { font-size: 1.2rem; font-weight: 700; }
+.card-short { font-size: 0.95rem; }
+.card-long { font-size: 0.85rem; color: var(--text-2); line-height: 1.65; }
+.card.offer details summary { cursor: pointer; color: var(--muted); font-size: 0.8rem; }
+.card.offer .pick { margin-top: auto; background: color-mix(in srgb, var(--c) 35%, var(--button)); }
+.card.offer .pick:hover { background: color-mix(in srgb, var(--c) 55%, var(--button)); }
+.pick .key { display: inline-block; min-width: 1.4em; border: 1px solid #fff8; border-radius: 4px; font-size: 0.8em; margin-right: 4px; }
+.card-detail { border-top: 5px solid var(--c); padding-top: 12px; }
+.card-detail h2 { margin: 8px 0; }

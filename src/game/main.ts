@@ -1,19 +1,30 @@
-import "./game.css";
+// ゲームの進行（状態と流れ）。見た目は ui/、音と動きは fx/、点の計算は cards.ts、ラウンドの決めごとは rules.ts。
+import "./ui/theme.css";
+import "./ui/base.css";
+import "./ui/fx.css";
 import type { IpadicFeatures, Tokenizer } from "kuromoji";
-import { analyze, loadTokenizer, type TokenRow } from "../morph";
+import { analyze, loadTokenizer } from "../morph";
 import { EmbedClient } from "./embed-client";
+import { BASE_CAP, CARDS, CARD_BY_ID, moraCount, scoreSentence, type CardDef } from "./cards";
 import { drawOffers, gateFor, HANDS, OFFER_COUNT } from "./rules";
-import { BASE_CAP, CARDS, CARD_BY_ID, scoreSentence, type Breakdown, type CardDef, type Line, type Played } from "./cards";
-
-const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
-const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+import { sfx, unlockAudio } from "./fx/audio";
+import { bump, confetti, Run } from "./fx/motion";
+import { onSettings, settings, updateSettings } from "./fx/settings";
+import { renderLog, type Entry } from "./ui/breakdown";
+import { showOffers } from "./ui/cards-view";
+import { $, esc } from "./ui/dom";
+import { renderHud } from "./ui/hud";
+import { initInput, setInputEnabled, takeKeyStats } from "./ui/input";
+import { closeOverlay, initOverlay, openOverlay, overlayOpen } from "./ui/overlay";
+import { playScoring, stageIntro } from "./ui/scoring";
+import { showSettings } from "./ui/settings-view";
 
 const SEEN_KEY = "freeform-typing.seen-cards.v1";
 const BEST_KEY = "freeform-typing.best.v1";
 
 // ---- 状態 ----
-type Entry = Played & { round: number; bd: Breakdown; keys: number; secs: number };
-type Phase = "play" | "busy" | "pick" | "over";
+// play: 打てる / busy: 点を計算中 / ending: ラウンドの最後の文の数え上げ中 / next: 「カードを選ぶ」等のボタン待ち / pick: カードを選ぶ画面 / over: 終わり
+type Phase = "play" | "busy" | "ending" | "next" | "pick" | "over";
 const S = {
   round: 1,
   owned: [] as string[],
@@ -24,6 +35,11 @@ const S = {
   offers: [] as string[],
   runTotal: 0,
 };
+/** 画面に出しているラウンドの点（数え上げの途中は S.roundScore より小さい） */
+let shown = 0;
+let run: Run | null = null;
+let animDone: Promise<void> = Promise.resolve();
+
 let tokenizer: Tokenizer<IpadicFeatures> | null = null;
 const emb = new EmbedClient();
 const seen = new Set<string>(JSON.parse(localStorage.getItem(SEEN_KEY) ?? "[]"));
@@ -32,191 +48,121 @@ const markSeen = (id: string) => {
   localStorage.setItem(SEEN_KEY, JSON.stringify([...seen]));
 };
 
-// 打鍵の記録（点には入れない。表示だけ）
-let keyCount = 0;
-let keyStart = 0;
-
-// ---- 状態表示 ----
+// ---- 状態表示（下の帯） ----
 const status: Record<string, string> = {};
 function setStatus(k: string, v: string) {
   if (v) status[k] = v;
   else delete status[k];
   $("status").innerHTML = Object.values(status).join(" ／ ");
 }
-
 function embStatus(msg: string) {
   if (emb.state === "loading") setStatus("emb", `意味のモデルを読み込み中（終わるまで、意味の距離を使うカードは出ない）${msg ? "… " + esc(msg) : ""}`);
   else if (emb.state === "ready") setStatus("emb", `意味のモデル: 準備できた（${esc(emb.info?.key.split("|")[0] ?? "")}）`);
   else setStatus("emb", `<span class="err">意味のモデルが使えない: ${esc(emb.error)}（意味のカードは出ない）</span>`);
 }
 
-// ---- 描画 ----
-function renderTop() {
-  const gate = gateFor(S.round);
-  $("round").textContent = String(S.round);
-  $("gate-text").innerHTML = `<b>${S.roundScore}</b> / ${gate} 点`;
-  const fill = $("bar-fill");
-  fill.style.width = `${Math.min(100, (S.roundScore / gate) * 100)}%`;
-  fill.classList.toggle("done", S.roundScore >= gate);
-  $("hands").innerHTML =
-    `<span class="hands-label">残り</span>` +
-    Array.from({ length: HANDS }, (_, i) => `<span class="dot ${i < S.handsLeft ? "on" : ""}"></span>`).join("");
-  const deck = $("deck");
-  deck.innerHTML = S.owned.length
-    ? S.owned.map((id) => cardTile(CARD_BY_ID.get(id)!, "mini")).join("")
-    : `<span class="empty">まだ無い。いまは読みの音の数（拍）だけが点になる。ラウンドを越えるとカードを 1 枚選べる。</span>`;
-  deck.querySelectorAll<HTMLElement>("[data-card]").forEach((el) => el.addEventListener("click", () => showCard(el.dataset.card!)));
-}
+const hud = (newCard?: string) => renderHud({ round: S.round, gate: gateFor(S.round), shown, handsLeft: S.handsLeft, hands: HANDS, owned: S.owned }, newCard);
 
-const KIND_LABEL: Record<CardDef["kind"], string> = { chips: "点", mult: "倍率＋", xmult: "倍率×", rule: "決まり" };
-
-function cardTile(c: CardDef, mode: "mini" | "offer", idx?: number) {
-  const isNew = !seen.has(c.id);
-  const src = `<span class="src ${c.source === "埋め込み" ? "emb" : "morph"}">${c.source}</span>`;
-  const kind = `<span class="kind k-${c.kind}">${KIND_LABEL[c.kind]}</span>`;
-  if (mode === "mini") return `<button class="card mini k-${c.kind}" data-card="${c.id}" title="${esc(c.short)}">${esc(c.name)}</button>`;
-  return `<div class="card offer k-${c.kind}">
-    <div class="card-head">${kind}${src}${isNew ? `<span class="new">NEW</span>` : ""}</div>
-    <div class="card-name">${esc(c.name)}</div>
-    <div class="card-short">${esc(c.short)}</div>
-    <details ${isNew ? "open" : ""}><summary>くわしく</summary><div class="card-long">${esc(c.long)}</div></details>
-    <button class="pick" data-pick="${idx}">これを取る</button>
-  </div>`;
-}
-
-function showCard(id: string) {
-  const c = CARD_BY_ID.get(id)!;
-  openOverlay(`<h2>${esc(c.name)}</h2>
-    <p class="card-meta"><span class="kind k-${c.kind}">${KIND_LABEL[c.kind]}</span> <span class="src ${c.source === "埋め込み" ? "emb" : "morph"}">${c.source}</span></p>
-    <p><b>${esc(c.short)}</b></p><p class="card-long">${esc(c.long)}</p>
-    <div class="ov-actions"><button id="ov-close">閉じる</button></div>`);
-  $("ov-close").addEventListener("click", closeOverlay);
-}
-
-function openOverlay(html: string) {
-  $("overlay-body").innerHTML = html;
-  $("overlay").classList.remove("hidden");
-}
-function closeOverlay() {
-  $("overlay").classList.add("hidden");
-  if (S.phase === "play") $<HTMLInputElement>("text").focus();
-}
-
-const POS_CLASS: Record<string, string> = { 名詞: "n", 動詞: "v", 形容詞: "a", 副詞: "d", 助詞: "p", 助動詞: "x" };
-function tokenChips(tokens: TokenRow[]) {
-  return tokens
-    .map((t) => {
-      const label = t.proper ? "固有名詞" : t.pos + (t.pos === "名詞" && t.pos1 && t.pos1 !== "一般" ? "・" + t.pos1 : "");
-      return `<span class="tok ${t.proper ? "proper" : POS_CLASS[t.pos] ?? ""}${t.wordType === "UNKNOWN" ? " unk" : ""}" title="読み: ${esc(t.reading || "—")}"><span class="s">${esc(t.surface)}</span><span class="p">${esc(label)}</span></span>`;
-    })
-    .join("");
-}
-
-function lineRow(l: Line, fmt: (x: number) => string) {
-  return `<tr class="${l.result.hit ? "hit" : "miss"}"><td class="n">${esc(l.card.name)}</td><td class="d">${esc(l.result.detail)}</td><td class="v">${l.result.hit ? fmt(l.result.amount) : "—"}</td></tr>`;
-}
-
-function breakdownHtml(e: Entry) {
-  const b = e.bd;
-  const fmtMult = (x: number) => (Number.isInteger(x) ? String(x) : x.toFixed(1));
-  const rows = [
-    `<tr class="sec"><td colspan="3">基本点</td></tr>`,
-    `<tr class="hit"><td class="n">読みの音の数</td><td class="d">${b.mora} 拍${b.mora > b.cap ? `（上限 ${b.cap} で頭打ち）` : `（上限 ${b.cap}）`}</td><td class="v">${b.base}</td></tr>`,
-    ...b.chipLines.map((l) => lineRow(l, (x) => `＋${x}`)),
-    `<tr class="sum"><td colspan="2">基本点</td><td class="v">${b.chips}</td></tr>`,
-    `<tr class="sec"><td colspan="3">倍率</td></tr>`,
-    `<tr class="hit"><td class="n">はじめ</td><td class="d"></td><td class="v">1</td></tr>`,
-    ...b.multLines.map((l) => lineRow(l, (x) => `＋${fmtMult(x)}`)),
-    ...b.xLines.map((l) => lineRow(l, (x) => `×${fmtMult(x)}`)),
-    `<tr class="sum"><td colspan="2">倍率</td><td class="v">${fmtMult(b.mult)}${b.xmult !== 1 ? ` × ${fmtMult(b.xmult)}` : ""}</td></tr>`,
-  ].join("");
-  const formula = b.duplicate
-    ? `このランで同じ文を前にも送ったので <b>0</b> 点`
-    : `${b.chips} × ${fmtMult(b.mult)}${b.xmult !== 1 ? ` × ${fmtMult(b.xmult)}` : ""} = <b>${b.total}</b> 点`;
-  const speed = e.keys ? `打鍵 ${e.keys}・${e.secs.toFixed(1)} 秒` : "";
-  return `<div class="bd">
-    <div class="bd-head"><span class="bd-text">${esc(e.text)}</span><span class="bd-total">${formula}</span></div>
-    <div class="tokens">${tokenChips(e.morph.tokens)}</div>
-    <div class="reading">読み: ${esc(e.morph.reading)}${speed ? `　<span class="speed">${speed}（点には入らない）</span>` : ""}</div>
-    <table class="lines">${rows}</table>
-  </div>`;
-}
-
-function renderLog() {
-  const log = $("log");
-  const parts: string[] = [];
-  let r = 0;
-  for (let i = S.played.length - 1; i >= 0; i--) {
-    const e = S.played[i];
-    if (e.round !== r) {
-      r = e.round;
-      parts.push(`<div class="log-round">ラウンド ${r}</div>`);
-    }
-    parts.push(`<details class="log-e"><summary><span class="log-t">${esc(e.text)}</span><span class="log-s">${e.total} 点</span></summary>${breakdownHtml(e)}</details>`);
-  }
-  log.innerHTML = parts.join("");
-}
-
-function renderIntro() {
-  $("last").innerHTML = `<div class="intro">
+function intro() {
+  stageIntro(`<div class="intro">
     <h2>遊び方</h2>
-    <p>お題は無い。好きな日本語の文を打って Enter で送る。ローマ字で打ち、漢字に変換してよい（変換した方が文の解析が正しくなる）。</p>
+    <p>お題は無い。好きな日本語の文を打って <kbd>Enter</kbd> で送る。ローマ字で打ち、漢字に変換してよい（変換した方が文の解析が正しくなる）。</p>
     <p>1 ラウンドで送れるのは ${HANDS} 文。合計がゲートの点に届けばクリアで、得点のルールのカードを ${OFFER_COUNT} 枚から 1 枚選んで足せる。届かなければ終わり。</p>
     <p>最初のルールは「読みの音の数（拍）が点になる（1 文 ${BASE_CAP} まで）」だけ。カードを足すほど、何を打てば点になるかが変わっていく。同じ文には同じ点が付き、送るたびに内訳が出る。</p>
-  </div>`;
+  </div>`);
+}
+
+function roundBanner() {
+  stageIntro(`<div class="round-start"><div class="rs-round">ラウンド ${S.round}</div><div class="rs-gate">ゲート <b>${gateFor(S.round)}</b> 点 ・ ${HANDS} 文まで</div></div>`);
+  bump($("stage").firstElementChild, "enter");
 }
 
 // ---- 進行 ----
-async function submit(text: string) {
+/** 演出の途中なら最後まで飛ばす */
+function skip() {
+  run?.skip();
+}
+
+async function submit(text: string): Promise<boolean> {
   text = text.trim();
-  if (!text || S.phase !== "play") return;
+  if (!text || S.phase !== "play") return false;
   if (!tokenizer) {
     setStatus("send", "辞書の読み込みを待っている…");
-    return;
+    return false;
   }
+  // 前の文の数え上げが残っていれば飛ばす（打つ手を止めない）
+  skip();
   S.phase = "busy";
+  await animDone;
   setStatus("send", "");
-  const keys = keyCount;
-  const secs = keyStart ? (performance.now() - keyStart) / 1000 : 0;
-  keyCount = 0;
-  keyStart = 0;
+  const { keys, secs } = takeKeyStats();
   try {
     const morph = analyze(tokenizer, text);
     const prev = S.played.length ? S.played[S.played.length - 1] : null;
-    const bd = await scoreSentence({ text, morph, prev, past: S.played, roundPast: S.played.filter((p) => p.round === S.round), emb: emb.state === "ready" ? emb : null }, S.owned);
+    const bd = await scoreSentence(
+      { text, morph, prev, past: S.played, roundPast: S.played.filter((p) => p.round === S.round), emb: emb.state === "ready" ? emb : null },
+      S.owned,
+    );
     const e: Entry = { text, morph, total: bd.total, round: S.round, bd, keys, secs };
+    const from = S.roundScore;
     S.played.push(e);
     S.roundScore += bd.total;
     S.runTotal += bd.total;
     S.handsLeft--;
-    $("last").innerHTML = breakdownHtml(e);
-    renderLog();
-    renderTop();
+    const gate = gateFor(S.round);
+    const outcome = S.roundScore >= gate ? "clear" : S.handsLeft <= 0 ? "over" : "continue";
+    S.phase = outcome === "continue" ? "play" : "ending";
+    renderLog($("log"), S.played);
+    renderHud({ round: S.round, gate, shown, handsLeft: S.handsLeft, hands: HANDS, owned: S.owned });
     const unk = morph.tokens.filter((t) => t.wordType === "UNKNOWN").length;
-    $("hint").textContent = !/[一-龯々ァ-ヶ]/.test(text) && [...text].length >= 6
-      ? "ひらがなだけの文は解析が崩れやすい（区切りがずれて名詞や固有名詞が見えなくなる）。漢字に変換して送ると正しく読める。"
-      : unk >= 2 ? `辞書に無い語が ${unk} つあった（赤い字）。読みが取れないので、拍の数に入らない。` : "";
-    if (S.roundScore >= gateFor(S.round)) showNext("clear");
-    else if (S.handsLeft <= 0) showNext("over");
-    else S.phase = "play";
+    $("hint").textContent =
+      !/[一-龯々ァ-ヶ]/.test(text) && [...text].length >= 6
+        ? "ひらがなだけの文は解析が崩れやすい（区切りがずれて名詞や固有名詞が見えなくなる）。漢字に変換して送ると正しく読める。"
+        : unk >= 2
+          ? `辞書に無い語が ${unk} つあった（赤い字）。読みが取れないので、拍の数に入らない。`
+          : "";
+    const r = new Run();
+    run = r;
+    animDone = playScoring(r, e, { roundFrom: from, roundTo: S.roundScore, gate })
+      .catch((err) => console.error(err))
+      .finally(() => {
+        shown = S.roundScore;
+        if (run === r) run = null;
+        if (outcome !== "continue") showNext(outcome);
+      });
+    return true;
   } catch (err) {
     setStatus("send", `<span class="err">計算に失敗: ${esc(String(err))}</span>`);
     S.phase = "play";
+    return false;
   }
 }
 
 /** ラウンドの終わり。最後の文の内訳を読めるように、すぐには重ねず、ボタンを出して待つ。 */
 function showNext(kind: "clear" | "over") {
-  S.phase = kind === "clear" ? "pick" : "over";
-  const input = $<HTMLInputElement>("text");
-  input.disabled = true;
+  S.phase = "next";
+  setInputEnabled(false);
+  const gate = gateFor(S.round);
   $("next").innerHTML =
     kind === "clear"
-      ? `<div class="next clear"><span>ラウンド ${S.round} クリア（${S.roundScore} / ${gateFor(S.round)} 点）</span><button id="next-btn">カードを選ぶ</button></div>`
-      : `<div class="next over"><span>ゲートに届かなかった（${S.roundScore} / ${gateFor(S.round)} 点）</span><button id="next-btn">結果を見る</button></div>`;
+      ? `<div class="next clear"><span><b>ラウンド ${S.round} クリア</b>（${S.roundScore} / ${gate} 点）</span><button id="next-btn" disabled>カードを選ぶ <kbd>Enter</kbd></button></div>`
+      : `<div class="next over"><span><b>ゲートに届かなかった</b>（${S.roundScore} / ${gate} 点）</span><button id="next-btn" disabled>結果を見る <kbd>Enter</kbd></button></div>`;
+  const banner = $("next").firstElementChild!;
+  bump(banner, "enter");
+  if (kind === "clear") {
+    sfx.clear();
+    confetti();
+  } else {
+    sfx.over();
+    bump(banner, "shake");
+  }
   const btn = $<HTMLButtonElement>("next-btn");
   btn.addEventListener("click", () => (kind === "clear" ? clearRound() : gameOver()));
-  btn.focus();
+  // 押しっぱなしの Enter がそのままボタンを押さないよう、少し置いてから押せるようにする
+  setTimeout(() => {
+    btn.disabled = false;
+    if (S.phase === "next" && !overlayOpen()) btn.focus();
+  }, 300);
 }
 
 function eligibleCards(): CardDef[] {
@@ -224,67 +170,85 @@ function eligibleCards(): CardDef[] {
 }
 
 function clearRound() {
-  const pool = eligibleCards();
+  if (S.phase !== "next") return;
+  S.phase = "pick";
   const best = Number(localStorage.getItem(BEST_KEY) ?? "0");
   if (S.round > best) localStorage.setItem(BEST_KEY, String(S.round));
   // 3 枚を無作為に（引くのは毎回ちがってよい。点の計算は決定的）
-  const offers = drawOffers(pool).map((c) => c.id);
-  S.offers = offers;
+  S.offers = drawOffers(eligibleCards()).map((c) => c.id);
   const used = HANDS - S.handsLeft;
-  const head = `<h2>ラウンド ${S.round} クリア</h2><p>${used} 文で ${S.roundScore} 点（ゲート ${gateFor(S.round)}）。次のゲートは ${gateFor(S.round + 1)} 点。</p>`;
-  if (!offers.length) {
-    openOverlay(`${head}<p>取れるカードはもう無い。</p><div class="ov-actions"><button id="ov-next">次のラウンドへ</button></div>`);
+  const head = `<div class="clear-head"><div class="ch-title">ラウンド ${S.round} クリア</div>
+    <div class="ch-stats"><span>${used} 文で <b>${S.roundScore}</b> 点（ゲート ${gateFor(S.round)}）</span><span>次のゲート <b>${gateFor(S.round + 1)}</b> 点</span></div></div>`;
+  if (!S.offers.length) {
+    openOverlay(`${head}<p>取れるカードはもう無い。</p><div class="ov-actions"><button id="ov-next">次のラウンドへ</button></div>`, { closable: false, variant: "wide" });
     $("ov-next").addEventListener("click", () => pick(-1));
+    $("ov-next").focus();
     return;
   }
-  const waiting = emb.state === "loading" ? `<p class="note">意味のモデルを読み込み中なので、意味の距離を使うカードはまだ出ていない。</p>` : "";
-  openOverlay(`${head}<p>ルールを 1 枚選んで足す。</p>${waiting}<div class="offers">${offers.map((id, i) => cardTile(CARD_BY_ID.get(id)!, "offer", i)).join("")}</div>
-    <div class="ov-actions"><button id="ov-skip" class="ghost">取らずに進む</button></div>`);
-  document.querySelectorAll<HTMLButtonElement>("[data-pick]").forEach((b) => b.addEventListener("click", () => pick(Number(b.dataset.pick))));
-  $("ov-skip").addEventListener("click", () => pick(-1));
-  offers.forEach(markSeen);
+  const note =
+    (emb.state === "loading" ? `<p class="note">意味のモデルを読み込み中なので、意味の距離を使うカードはまだ出ていない。</p>` : "") +
+    `<p class="ov-lead">ルールを 1 枚選んで足す。</p>`;
+  showOffers(head, S.offers, seen, note, pick);
+  S.offers.forEach(markSeen);
 }
 
 function pick(i: number) {
   if (S.phase !== "pick") return;
-  if (i >= 0 && S.offers[i]) S.owned.push(S.offers[i]);
+  const got = i >= 0 && S.offers[i] ? S.offers[i] : undefined;
+  if (got) S.owned.push(got);
   S.round++;
   S.roundScore = 0;
+  shown = 0;
   S.handsLeft = HANDS;
   S.offers = [];
   S.phase = "play";
   $("next").innerHTML = "";
-  $<HTMLInputElement>("text").disabled = false;
   closeOverlay();
-  renderTop();
-  renderLog();
+  hud(got);
+  roundBanner();
+  setInputEnabled(true);
 }
 
 function gameOver() {
+  if (S.phase !== "next") return;
   S.phase = "over";
   const best = Math.max(Number(localStorage.getItem(BEST_KEY) ?? "0"), S.round - 1);
   localStorage.setItem(BEST_KEY, String(best));
-  openOverlay(`<h2>ゲートに届かなかった</h2>
-    <p>ラウンド ${S.round}: ${S.roundScore} / ${gateFor(S.round)} 点。越えたラウンド ${S.round - 1}（これまでの最高 ${best}）。このランの合計 ${S.runTotal} 点。</p>
-    <p>手持ちのルール: ${S.owned.length ? S.owned.map((id) => esc(CARD_BY_ID.get(id)!.name)).join("、") : "なし"}</p>
-    <div class="ov-actions"><button id="ov-look" class="ghost">内訳を見返す</button><button id="ov-restart">はじめから</button></div>`);
+  const top = S.played.reduce<Entry | null>((a, e) => (!a || e.total > a.total ? e : a), null);
+  openOverlay(
+    `<div class="over-head"><div class="oh-title">ゲームオーバー</div>
+      <div class="oh-sub">ラウンド ${S.round}: ${S.roundScore} / ${gateFor(S.round)} 点</div></div>
+    <div class="over-stats">
+      <div><span class="lbl">越えたラウンド</span><b>${S.round - 1}</b></div>
+      <div><span class="lbl">これまでの最高</span><b>${best}</b></div>
+      <div><span class="lbl">このランの合計</span><b>${S.runTotal}</b></div>
+      <div><span class="lbl">送った文</span><b>${S.played.length}</b></div>
+    </div>
+    ${top ? `<p class="over-best"><span class="lbl">一番点の高かった文</span><br/>「${esc(top.text)}」 <b>${top.total}</b> 点</p>` : ""}
+    <p class="over-deck">手持ちのルール: ${S.owned.length ? S.owned.map((id) => esc(CARD_BY_ID.get(id)!.name)).join("、") : "なし"}</p>
+    <div class="ov-actions"><button id="ov-look" class="ghost">内訳を見返す</button><button id="ov-restart">はじめから <kbd>Enter</kbd></button></div>`,
+    { closable: false, variant: "narrow over" },
+  );
   $("ov-restart").addEventListener("click", restart);
+  $("ov-restart").focus();
   $("ov-look").addEventListener("click", () => {
-    $("overlay").classList.add("hidden");
+    closeOverlay();
     $("next").innerHTML = `<div class="next over"><span>このランは終わり。内訳は下の一覧で開ける。</span><button id="next-btn">はじめから</button></div>`;
     $("next-btn").addEventListener("click", restart);
   });
 }
 
 function restart() {
+  skip();
   Object.assign(S, { round: 1, owned: [], played: [], roundScore: 0, handsLeft: HANDS, phase: "play", offers: [], runTotal: 0 });
+  shown = 0;
   $("hint").textContent = "";
   $("next").innerHTML = "";
-  $<HTMLInputElement>("text").disabled = false;
   closeOverlay();
-  renderIntro();
-  renderTop();
-  renderLog();
+  intro();
+  hud();
+  renderLog($("log"), S.played);
+  setInputEnabled(true);
 }
 
 // ---- 起動 ----
@@ -299,50 +263,61 @@ async function initMorph() {
 }
 
 function init() {
-  const input = $<HTMLInputElement>("text");
-  const send = () => {
-    if (S.phase !== "play") return;
-    const t = input.value;
-    if (!t.trim()) return;
-    input.value = "";
-    void submit(t);
-  };
-  input.addEventListener("keydown", (ev) => {
-    if (ev.key === "Enter") {
-      // IME の変換確定の Enter では送らない
-      if (!ev.isComposing && ev.keyCode !== 229) {
-        ev.preventDefault();
-        send();
-      }
+  initOverlay();
+  const inp = initInput({
+    canSubmit: () => S.phase === "play",
+    onSubmit: (t) => void submit(t),
+    onSkip: skip,
+    liveMora: (t) => (tokenizer ? moraCount(analyze(tokenizer, t).reading) : null),
+  });
+  onSettings(() => inp.updateLive());
+  // 数え上げの表示を押すと最後まで飛ばす
+  $("stage").addEventListener("click", skip);
+  $("scorebox").addEventListener("click", skip);
+  $("btn-settings").addEventListener("click", () => {
+    unlockAudio();
+    showSettings(() => {
+      if (S.phase === "play") $<HTMLInputElement>("text").focus();
+    });
+  });
+  document.addEventListener("keydown", (ev) => {
+    if (overlayOpen() || ev.ctrlKey || ev.metaKey || ev.altKey) return;
+    const input = $<HTMLInputElement>("text");
+    if (document.activeElement === input) return;
+    // ラウンドの最後の文の数え上げ中は Enter・スペースで飛ばす
+    if ((ev.key === "Enter" || ev.key === " ") && run && S.phase === "ending") {
+      ev.preventDefault();
+      skip();
       return;
     }
-    if (ev.repeat || ev.ctrlKey || ev.metaKey || ev.altKey) return;
-    if (["Shift", "Control", "Alt", "Meta", "CapsLock", "Tab"].includes(ev.key)) return;
-    if (!keyStart) keyStart = performance.now();
-    keyCount++;
-  });
-  $("send").addEventListener("click", send);
-  $("overlay").addEventListener("click", (ev) => {
-    if (ev.target === $("overlay") && S.phase !== "pick" && S.phase !== "over") closeOverlay();
+    // 入力欄の外で文字を打ち始めたら入力欄へ
+    if (S.phase === "play" && ev.key.length === 1 && ev.key !== " ") input.focus();
   });
 
-  renderIntro();
-  renderTop();
+  intro();
+  hud();
   void initMorph();
   emb.onChange = embStatus;
   embStatus("");
   void emb.load();
-  input.focus();
+  setInputEnabled(true);
 
   // ヘッドレス検証用の口
   (window as unknown as Record<string, unknown>).__game = {
     state: () => S,
+    phase: () => S.phase,
     submit,
     pick,
     restart,
+    skip,
+    next: () => $<HTMLButtonElement>("next-btn")?.click(),
+    animating: () => !!run,
+    idle: () => animDone,
     ready: () => !!tokenizer,
     embState: () => emb.state,
     gateFor,
+    settings: () => ({ ...settings }),
+    setSettings: updateSettings,
   };
 }
 
